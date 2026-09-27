@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cool-cam": {
+      "command": "node",
+      "args": ["/Users/harvey/Documents/CODE/COOL_CAM/packages/mcp/dist/index.js"],
+      "env": { "COOL_CAM_JOBS_DIR": "/Users/harvey/Documents/CODE/COOL_CAM/jobs" }
+    }
+  }
+}

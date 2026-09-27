@@ -1,0 +1,23 @@
+{
+  "name": "@cool-cam/core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "clipper-lib": "^6.4.2",
+    "earcut": "^3.2.3"
+  },
+  "devDependencies": {
+    "@types/earcut": "^3.0.0"
+  }
+}

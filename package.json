@@ -1,0 +1,21 @@
+{
+  "name": "cool-cam",
+  "private": true,
+  "version": "0.1.0",
+  "description": "MCP-enabled open-source CAM for the Shapeoko HDM: 2.5D toolpaths, stock simulation, 3D web viewer.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @cool-cam/core -w @cool-cam/post -w @cool-cam/sim -w @cool-cam/mcp",
+    "test": "vitest run",
+    "dev": "npm run dev -w @cool-cam/viewer",
+    "mcp": "node packages/mcp/dist/index.js",
+    "typecheck": "tsc -b packages/core packages/post packages/sim packages/mcp && tsc -p packages/viewer --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0"
+  }
+}

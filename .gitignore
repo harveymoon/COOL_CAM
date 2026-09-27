@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.tsbuildinfo
+jobs/*.gcode
+.DS_Store
+
+# live job the viewer and MCP server write on every edit
+jobs/current.json

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" fill="#0d0f13"/>
+  <!-- contour lines of a carved surface -->
+  <g fill="none" stroke="#5ec8ff" stroke-width="2">
+    <path d="M6 50 Q20 34 32 44 T58 40"/>
+    <path d="M6 56 Q20 42 32 50 T58 47" opacity="0.6"/>
+    <path d="M6 62 Q20 50 32 56 T58 54" opacity="0.3"/>
+  </g>
+  <!-- endmill: shank, flutes, tip -->
+  <rect x="27" y="4" width="10" height="14" fill="#d7dae0"/>
+  <rect x="26" y="18" width="12" height="20" fill="#9aa1aa"/>
+  <path d="M26 20 L38 26 M26 27 L38 33 M26 34 L38 38" stroke="#0d0f13" stroke-width="2.4"/>
+  <rect x="26" y="38" width="12" height="3" fill="#ffb454"/>
+  <!-- chips -->
+  <rect x="16" y="35" width="3" height="3" fill="#ffb454"/>
+  <rect x="45" y="31" width="3" height="3" fill="#ffb454"/>
+  <rect x="12" y="41" width="2" height="2" fill="#ffb454" opacity="0.7"/>
+</svg>

@@ -15,86 +15,48 @@
   {
    "id": "t201",
    "number": 201,
-   "name": "#201 1/4\" square endmill",
+   "name": "#201 1/4\" square 3FL",
    "type": "endmill",
    "diameter": 6.35,
    "flutes": 3,
-   "fluteLength": 19,
+   "fluteLength": 19.05,
+   "shankDiameter": 6.35,
+   "overallLength": 63.5,
    "rpm": 18000,
    "feed": 2000,
-   "plunge": 600
+   "plunge": 600,
+   "sku": "Nomad Tools #201",
+   "notes": "General purpose upcut. Wood, plastics, soft metals."
   },
   {
-   "id": "t202",
-   "number": 202,
-   "name": "#202 1/4\" ballnose",
-   "type": "ballnose",
-   "diameter": 6.35,
-   "flutes": 3,
-   "fluteLength": 19,
-   "rpm": 18000,
-   "feed": 2000,
-   "plunge": 600
-  },
-  {
-   "id": "t102",
-   "number": 102,
-   "name": "#102 1/8\" square endmill",
-   "type": "endmill",
-   "diameter": 3.175,
-   "flutes": 2,
-   "fluteLength": 12.7,
-   "rpm": 18000,
-   "feed": 1200,
-   "plunge": 400
-  },
-  {
-   "id": "t101",
-   "number": 101,
-   "name": "#101 1/8\" ballnose",
-   "type": "ballnose",
-   "diameter": 3.175,
-   "flutes": 2,
-   "fluteLength": 12.7,
-   "rpm": 18000,
-   "feed": 1200,
-   "plunge": 400
-  },
-  {
-   "id": "t112",
-   "number": 112,
-   "name": "#112 1/16\" square endmill",
-   "type": "endmill",
-   "diameter": 1.5875,
-   "flutes": 2,
-   "fluteLength": 6.35,
-   "rpm": 20000,
-   "feed": 600,
-   "plunge": 200
-  },
-  {
-   "id": "t302",
+   "id": "vbit60_todo",
    "number": 302,
-   "name": "#302 60° V-bit",
+   "name": "(to buy) 60° V-bit, 1/4\" shank",
    "type": "vbit",
    "diameter": 12.7,
    "flutes": 2,
    "tipAngle": 60,
+   "shankDiameter": 6.35,
    "rpm": 18000,
    "feed": 1000,
-   "plunge": 400
+   "plunge": 400,
+   "notes": "Not in your library. Not in your library yet. Any 1/4\"-shank 60° V-bit (e.g. Carbide 3D #302) — replace this entry with the real cutter."
   },
   {
-   "id": "t301",
-   "number": 301,
-   "name": "#301 90° V-bit",
-   "type": "vbit",
-   "diameter": 12.7,
+   "id": "am46369k",
+   "number": 369,
+   "name": "Amana 46369-K 1/8\" upcut Spektra",
+   "type": "endmill",
+   "diameter": 3.175,
    "flutes": 2,
-   "tipAngle": 90,
+   "fluteLength": 12.7,
+   "shankDiameter": 6.35,
+   "overallLength": 50.8,
    "rpm": 18000,
-   "feed": 1000,
-   "plunge": 400
+   "feed": 1200,
+   "plunge": 400,
+   "sku": "Amana Tool 46369-K",
+   "notes": "Spektra coated 2-flute spiral upcut, 1/4 shank, 1/2 in cutting length. Wood and plastics."
   }
  ],
  "shapes": [
@@ -3659,7 +3621,7 @@
    "id": "carve",
    "name": "V-carve lettering",
    "type": "vcarve",
-   "toolId": "t302",
+   "toolId": "vbit60_todo",
    "shapeIds": [
     "sign_1",
     "sign_2",
@@ -3674,7 +3636,7 @@
    ],
    "depth": 4,
    "stepover": 0.4,
-   "flatToolId": "t102",
+   "flatToolId": "am46369k",
    "rpm": 18000,
    "feed": 460,
    "plunge": 160
@@ -3702,5 +3664,5 @@
   }
  ],
  "material": "hardwood",
- "notes": "Text outlined from a system font, V-carved with #302 60° (depth cap 4 mm, flat clearing with #102), plaque cut out with #201 and tabs."
+ "notes": "Text outlined from a system font, V-carved with (to buy) 60° V-bit, 1/4\" shank (depth cap 4 mm, flat clearing with Amana 46369-K 1/8\" upcut Spektra), plaque cut out with #201 1/4\" square 3FL and tabs. The V-bit is a placeholder: buy a 60° V-bit and replace it in the job tools."
 }

@@ -15,86 +15,34 @@
   {
    "id": "t201",
    "number": 201,
-   "name": "#201 1/4\" square endmill",
+   "name": "#201 1/4\" square 3FL",
    "type": "endmill",
    "diameter": 6.35,
    "flutes": 3,
-   "fluteLength": 19,
+   "fluteLength": 19.05,
+   "shankDiameter": 6.35,
+   "overallLength": 63.5,
    "rpm": 18000,
    "feed": 2000,
-   "plunge": 600
+   "plunge": 600,
+   "sku": "Nomad Tools #201",
+   "notes": "General purpose upcut. Wood, plastics, soft metals."
   },
   {
-   "id": "t202",
-   "number": 202,
-   "name": "#202 1/4\" ballnose",
-   "type": "ballnose",
-   "diameter": 6.35,
-   "flutes": 3,
-   "fluteLength": 19,
-   "rpm": 18000,
-   "feed": 2000,
-   "plunge": 600
-  },
-  {
-   "id": "t102",
-   "number": 102,
-   "name": "#102 1/8\" square endmill",
-   "type": "endmill",
-   "diameter": 3.175,
-   "flutes": 2,
-   "fluteLength": 12.7,
-   "rpm": 18000,
-   "feed": 1200,
-   "plunge": 400
-  },
-  {
-   "id": "t101",
-   "number": 101,
-   "name": "#101 1/8\" ballnose",
+   "id": "e287",
+   "number": 287,
+   "name": "E287 1/8\" ball nose",
    "type": "ballnose",
    "diameter": 3.175,
    "flutes": 2,
-   "fluteLength": 12.7,
+   "fluteLength": 25.4,
+   "shankDiameter": 6.35,
+   "overallLength": 63.5,
    "rpm": 18000,
    "feed": 1200,
-   "plunge": 400
-  },
-  {
-   "id": "t112",
-   "number": 112,
-   "name": "#112 1/16\" square endmill",
-   "type": "endmill",
-   "diameter": 1.5875,
-   "flutes": 2,
-   "fluteLength": 6.35,
-   "rpm": 20000,
-   "feed": 600,
-   "plunge": 200
-  },
-  {
-   "id": "t302",
-   "number": 302,
-   "name": "#302 60° V-bit",
-   "type": "vbit",
-   "diameter": 12.7,
-   "flutes": 2,
-   "tipAngle": 60,
-   "rpm": 18000,
-   "feed": 1000,
-   "plunge": 400
-  },
-  {
-   "id": "t301",
-   "number": 301,
-   "name": "#301 90° V-bit",
-   "type": "vbit",
-   "diameter": 12.7,
-   "flutes": 2,
-   "tipAngle": 90,
-   "rpm": 18000,
-   "feed": 1000,
-   "plunge": 400
+   "plunge": 400,
+   "sku": "EANOSIC E287",
+   "notes": "1/4 shank, R 1/16, 1 in cutting length, 2 flutes. 3D finishing."
   }
  ],
  "shapes": [
@@ -1968,41 +1916,10 @@
  ],
  "ops": [
   {
-   "id": "star_coaster_70mm_12mm_rough",
-   "name": "3D rough (#201 1/4\" square endmill)",
-   "type": "rough3d",
-   "toolId": "t201",
-   "modelId": "star_coaster_70mm_12mm",
-   "shapeIds": [],
-   "depth": 12.31,
-   "depthPerPass": 3.175,
-   "stepover": 2.86,
-   "stockToLeave": 0.3,
-   "entry": "helix",
-   "boundary": 9.52,
-   "enabled": false
-  },
-  {
-   "id": "star_coaster_70mm_12mm_pocket_1",
-   "name": "Pocket to Z-12 (#201 1/4\" square endmill)",
-   "type": "pocket",
-   "toolId": "t201",
-   "shapeIds": [
-    "star_coaster_70mm_12mm_level_base_1",
-    "star_coaster_70mm_12mm_level_base_2"
-   ],
-   "depth": 12,
-   "startDepth": 11.399999999999999,
-   "depthPerPass": 3.175,
-   "stepover": 2.86,
-   "entry": "helix",
-   "enabled": false
-  },
-  {
    "id": "star_coaster_70mm_12mm_finish",
    "name": "3D finish (#101 1/8\" ballnose)",
    "type": "finish3d",
-   "toolId": "t101",
+   "toolId": "e287",
    "modelId": "star_coaster_70mm_12mm",
    "shapeIds": [
     "engrave_boundary"
@@ -6531,7 +6448,5 @@
    }
   }
  ],
- "material": "hardwood",
- "_rev": "uqsfwo59yco",
- "_savedAt": "2026-09-28T01:28:02.667Z"
+ "material": "hardwood"
 }

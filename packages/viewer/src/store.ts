@@ -89,8 +89,13 @@ export function useJobStore() {
     const toolpaths = generateToolpaths(job);
     const stats = toolpaths.map(tp => estimate(tp, machine));
     const post = postGrbl(job, toolpaths);
-    let sig = `${job.stock.width}x${job.stock.length}x${job.stock.thickness}:${job.stock.origin}:${job.stock.zOrigin}`;
-    for (const tp of toolpaths) { const last = tp.moves[tp.moves.length - 1]; sig += `|${tp.opId}:${tp.toolId}:${tp.moves.length}:${last ? `${last.x.toFixed(2)},${last.y.toFixed(2)},${last.z.toFixed(2)}` : ''}`; }
+    // the signature must change whenever the simulation would: stock, tool geometry (footprints), and every move incl. feeds (timeline)
+    let sig = `${job.stock.width}x${job.stock.length}x${job.stock.thickness}:${job.stock.origin}:${job.stock.zOrigin}:${job.safeZ}`;
+    for (const t of job.tools) sig += `|${t.id}:${t.type}:${t.diameter}:${t.tipAngle ?? ''}:${t.flutes}`;
+    for (const tp of toolpaths) {
+      let h = 0; for (const m of tp.moves) { h = (h * 31 + Math.round(m.x * 1000)) | 0; h = (h * 31 + Math.round(m.y * 1000)) | 0; h = (h * 31 + Math.round(m.z * 1000)) | 0; h = (h * 31 + Math.round(m.f ?? 0) + (m.kind === 'rapid' ? 7 : m.kind === 'retract' ? 11 : 0)) | 0; }
+      sig += `|${tp.opId}:${tp.toolId}:${tp.moves.length}:${h}`;
+    }
     return { toolpaths, stats, gcode: post.gcode, totalSeconds: post.seconds, signature: sig };
   }, [job]);
 

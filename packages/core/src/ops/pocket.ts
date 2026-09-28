@@ -37,7 +37,7 @@ export function generatePocket(job: Job, op: PocketOp): Toolpath {
     allowed = intersection(allowed, offsetPolygons(leftover, tool.diameter));
     if (!allowed.length) { ctx.warnings.push(`Rest machining: ${tool.name} cannot reach the leftover areas either.`); return empty(op, ctx); }
   }
-  const rings = ringsFor(allowed, stepover, climb);
+  const rings = ringsFor(allowed, stepover, climb, r);
 
   const finishLoops = op.finishPass && stl > 0 ? offsetPolygons(region, -r).map(l => setOrientation(simplify(l), signedArea(l) > 0 ? climb : !climb)) : [];
 
@@ -55,20 +55,44 @@ export function generatePocket(job: Job, op: PocketOp): Toolpath {
     prevZ = z;
   }
   ml.retract(ctx.safeZ);
-  return { opId: op.id, opName: op.name ?? 'Pocket', toolId: tool.id, rpm: ctx.rpm, moves: ml.moves, warnings: ctx.warnings };
+  return { opId: op.id, opName: op.name ?? 'Pocket', toolId: tool.id, rpm: ctx.rpm, moves: ml.moves, warnings: ctx.warnings, stepdown: ctx.stepdown };
 }
 
 export interface ClearOptions { stepover: number; entry: 'plunge' | 'helix' | 'ramp'; cur: Vec2; climb?: boolean }
 
-/** Build the concentric ring family for a tool-centre region (level 0 = region boundary itself). */
-export function ringsFor(allowed: Polyline[], stepover: number, climb = true): Ring[] {
+/**
+ * Build the concentric ring family for a tool-centre region (level 0 = region boundary itself).
+ *
+ * Coverage: a point at distance d from the region boundary is within (d − k·s) of ring k, so with a stepover s ≤ r every point is
+ * within r of some ring. With s > r that only holds where ring k+1 exists locally: in a neck of the region narrower than 2(k+1)s
+ * the next ring vanishes and a strip between k·s + r and (k+1)·s is left standing (the same happens at the core inside the
+ * innermost ring). With `toolRadius` given, every such gap gets a fill ring at k·s + 0.9r, which covers up to k·s + 1.9r ≥ (k+1)·s
+ * because the stepover is capped at 0.95·D. Fill rings sort between ring k+1 and ring k (fractional level) so cutting stays
+ * innermost-first.
+ */
+export function ringsFor(allowed: Polyline[], stepover: number, climb = true, toolRadius?: number): Ring[] {
   const outers = allowed.filter(l => signedArea(l) > 0);
   const rings: Ring[] = [];
+  const add = (level: number, loops: Polyline[]) => { for (const loop of loops) { const group = outers.findIndex(o => pointInPolygon(loop.points[0], o)); rings.push({ level, loop: simplify(loop), group: Math.max(0, group) }); } };
+  const levels: Polyline[][] = [];
   for (let level = 0; ; level++) {
     const loops = level === 0 ? allowed : offsetPolygons(allowed, -level * stepover);
     if (loops.length === 0) break;
-    for (const loop of loops) { const group = outers.findIndex(o => pointInPolygon(loop.points[0], o)); rings.push({ level, loop: simplify(loop), group: Math.max(0, group) }); }
+    levels.push(loops); add(level, loops);
     if (level > 5000) break;
+  }
+  if (toolRadius && stepover > toolRadius * 0.9) {
+    const r = toolRadius;
+    for (let k = 0; k < levels.length; k++) {
+      // what ring k leaves: farther than r inside it, and not within r of the next ring's region
+      const beyond = offsetPolygons(allowed, -(k * stepover + r)).filter(l => Math.abs(signedArea(l)) > 0.01);
+      if (!beyond.length) continue;
+      const next = levels[k + 1] ? offsetPolygons(levels[k + 1], r + 0.02) : [];
+      const gap = (next.length ? difference(beyond, next) : beyond).filter(l => Math.abs(signedArea(l)) > 0.05);
+      if (!gap.length) continue;
+      const fill = offsetPolygons(allowed, -(k * stepover + 0.9 * r)).filter(l => Math.abs(signedArea(l)) > 0.01);
+      if (fill.length) add(k + 0.5, fill);
+    }
   }
   for (const rg of rings) rg.loop = setOrientation(rg.loop, signedArea(rg.loop) > 0 ? climb : !climb);
   return rings;
@@ -76,7 +100,7 @@ export function ringsFor(allowed: Polyline[], stepover: number, climb = true): R
 
 /** Clear a tool-centre region at one Z level (rings innermost-first per island group). Returns the end position. */
 export function clearRegion(ml: MoveList, ctx: ReturnType<typeof makeContext>, allowed: Polyline[], z: number, prevZ: number, opts: ClearOptions): Vec2 {
-  return clearRings(ml, ctx, ringsFor(allowed, opts.stepover, opts.climb ?? true), allowed, z, prevZ, opts);
+  return clearRings(ml, ctx, ringsFor(allowed, opts.stepover, opts.climb ?? true, ctx.tool.diameter / 2), allowed, z, prevZ, opts);
 }
 
 function clearRings(ml: MoveList, ctx: ReturnType<typeof makeContext>, rings: Ring[], allowed: Polyline[], z: number, prevZ: number, opts: ClearOptions): Vec2 {
@@ -147,5 +171,5 @@ function enter(ml: MoveList, ctx: ReturnType<typeof makeContext>, entry: 'plunge
 }
 
 function empty(op: PocketOp, ctx: ReturnType<typeof makeContext>): Toolpath {
-  return { opId: op.id, opName: op.name ?? 'Pocket', toolId: ctx.tool.id, rpm: ctx.rpm, moves: [], warnings: ctx.warnings };
+  return { opId: op.id, opName: op.name ?? 'Pocket', toolId: ctx.tool.id, rpm: ctx.rpm, moves: [], warnings: ctx.warnings, stepdown: ctx.stepdown };
 }

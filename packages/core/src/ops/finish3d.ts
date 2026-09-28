@@ -1,5 +1,5 @@
 import type { Job } from '../job.js';
-import type { Finish3DOp } from '../ops.js';
+import type { Finish3DOp, Rough3DOp } from '../ops.js';
 import type { Toolpath } from '../toolpath.js';
 import { MoveList, makeContext } from './common.js';
 import { surfaceFor } from './surface.js';
@@ -39,12 +39,16 @@ export function generateFinish3D(job: Job, op: Finish3DOp): Toolpath {
       if (span.length < 2) { span = []; return; }
       const p0 = world(span[0].i, span[0].j); const z0 = zAt(span[0].i, span[0].j);
       const at = ml.position;
-      if (first || isNaN(at.x)) { ml.moveTo(p0.x, p0.y, z0, top + 0.5); first = false; }
-      else if (Math.hypot(at.x - p0.x, at.y - p0.y) <= stepover * 2.5 && Math.abs(at.z - z0) < tool.diameter) {
-        // short connector between rows: follow the surface so we never dive through a ridge
+      // approaches come down from the stock top: with a Z window (startDepth) the material above `top` is still there
+      const approach = ctx.stockTop + 0.5;
+      const connector: { x: number; y: number; z: number }[] = [];
+      if (!first && !isNaN(at.x) && Math.hypot(at.x - p0.x, at.y - p0.y) <= stepover * 2.5 && Math.abs(at.z - z0) < tool.diameter) {
+        // short connector between rows: follow the surface so we never dive through a ridge; abandon it if it would cross a skipped (air) cell
         const n = Math.max(1, Math.ceil(Math.hypot(at.x - p0.x, at.y - p0.y) / res));
-        for (let s = 1; s <= n; s++) { const t = s / n; const x = at.x + (p0.x - at.x) * t, y = at.y + (p0.y - at.y) * t; const i = Math.round((x - off.x0) / res), j = Math.round((y - off.y0) / res); ml.cut(x, y, zAt(Math.min(off.w - 1, Math.max(0, i)), Math.min(off.h - 1, Math.max(0, j)))); }
-      } else ml.moveTo(p0.x, p0.y, z0, top + 0.5);
+        for (let s = 1; s <= n; s++) { const t = s / n; const x = at.x + (p0.x - at.x) * t, y = at.y + (p0.y - at.y) * t; const i = Math.min(off.w - 1, Math.max(0, Math.round((x - off.x0) / res))), j = Math.min(off.h - 1, Math.max(0, Math.round((y - off.y0) / res))); const z = zAt(i, j); if (z >= air) { connector.length = 0; break; } connector.push({ x, y, z }); }
+      }
+      if (connector.length) for (const c of connector) ml.cut(c.x, c.y, c.z);
+      else { ml.moveTo(p0.x, p0.y, z0, approach); first = false; }
       let lastZ = z0, lastDir = 0;
       for (let s = 1; s < span.length; s++) {
         const c = span[s]; const z = zAt(c.i, c.j); const p = world(c.i, c.j);
@@ -65,5 +69,14 @@ export function generateFinish3D(job: Job, op: Finish3DOp): Toolpath {
   ml.retract(ctx.safeZ);
   if (!ml.moves.length) ctx.warnings.push('Finishing produced no moves: the surface is entirely at the stock top.');
   return done();
-  function done(): Toolpath { return { opId: op.id, opName: op.name ?? '3D Finish', toolId: tool.id, rpm: ctx.rpm, moves: ml.moves, warnings: ctx.warnings }; }
+  // Expected engagement: finishing removes what roughing left, i.e. stock-to-leave plus the terraces between roughing levels
+  // (up to one roughing stepdown on a steep wall). Without a roughing pass on this model it must not meet more than a diameter.
+  function expectedEngagement(): number {
+    const roughs = job.ops.filter((o): o is Rough3DOp => o.type === 'rough3d' && o.enabled !== false && o.modelId === op.modelId && job.ops.indexOf(o) < job.ops.indexOf(op));
+    if (!roughs.length) return tool.diameter;
+    // one roughing stepdown of terrace, the roughing stock-to-leave, plus what a flat roughing cutter leaves against a steep
+    // wall that the finishing tool reaches under (up to its radius on a 45° slope)
+    return Math.max(...roughs.map(r => { const rt = job.tools.find(t => t.id === r.toolId); const rd = rt?.diameter ?? tool.diameter; return (r.depthPerPass && r.depthPerPass > 0 ? r.depthPerPass : rd) + (r.stockToLeave ?? 0.3) + rd / 2; })) + (op.stockToLeave ?? 0);
+  }
+  function done(): Toolpath { return { opId: op.id, opName: op.name ?? '3D Finish', toolId: tool.id, rpm: ctx.rpm, moves: ml.moves, warnings: ctx.warnings, stepdown: expectedEngagement() }; }
 }

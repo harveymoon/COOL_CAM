@@ -17,7 +17,7 @@ export * from './job.js';
 export * from './generate.js';
 export * from './estimate.js';
 export * from './primitives.js';
-export { generateProfile, profileLoops, profileTabCenters } from './ops/profile.js';
+export { generateProfile, profileLoops, profileTabCenters, prepareProfileLoops, rotateLoopAt } from './ops/profile.js';
 export { generatePocket } from './ops/pocket.js';
 export { generateDrill } from './ops/drill.js';
 export { generateRough3D } from './ops/rough3d.js';

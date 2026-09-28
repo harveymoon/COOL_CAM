@@ -9,7 +9,8 @@ import { MoveList, makeContext, orderByNearest } from './common.js';
 export function generateKeyhole(job: Job, op: KeyholeOp): Toolpath {
   const ctx = makeContext(job, { ...op, depthPerPass: 1e9 });
   const tool = ctx.tool; const ml = new MoveList(ctx);
-  const done = (): Toolpath => ({ opId: op.id, opName: op.name ?? 'Keyhole', toolId: tool.id, rpm: ctx.rpm, moves: ml.moves, warnings: ctx.warnings });
+  // a keyhole cutter plunges to full depth and slides at that depth by design
+  const done = (): Toolpath => ({ opId: op.id, opName: op.name ?? 'Keyhole', toolId: tool.id, rpm: ctx.rpm, moves: ml.moves, warnings: ctx.warnings, stepdown: op.depth });
   if (tool.type !== 'keyhole') ctx.warnings.push(`Tool ${tool.name} is not a keyhole cutter; the slot will be cut as a plain slot.`);
   const length = op.length ?? 20; const ang = ((op.angle ?? 90) * Math.PI) / 180;
   const z = ctx.stockTop - op.depth;

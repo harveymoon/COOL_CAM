@@ -95,3 +95,37 @@ describe('manual tabs', () => {
     expect(manual).toHaveLength(1); expect(manual[0].y).toBeCloseTo(10 - 3.175, 1);
   });
 });
+
+describe('pocket coverage', () => {
+  it('leaves no core standing even at the widest allowed stepover', async () => {
+    const { StockSim } = await import('../../sim/src/index.js');
+    for (const stepover of [2.5, 4.5, 6.0]) {
+      const j = newJob('pip', { width: 60, length: 60, thickness: 10 });
+      j.shapes.push({ id: 'c', polyline: circleShape(30, 30, 30) });
+      j.ops.push({ id: 'p', type: 'pocket', toolId: 't201', shapeIds: ['c'], depth: 3, depthPerPass: 3, entry: 'plunge', stepover } as PocketOp);
+      const s = new StockSim(j, generateToolpaths(j), { resolution: 0.2, keyframeEvery: 0 }); s.runAll();
+      let maxIn = -Infinity;
+      for (let jj = 0; jj < s.h; jj++) for (let i = 0; i < s.w; i++) { const x = s.x0 + i * s.res, y = s.y0 + jj * s.res; if (Math.hypot(x - 30, y - 30) < 14) maxIn = Math.max(maxIn, s.heights[jj * s.w + i]); }
+      expect(maxIn).toBeCloseTo(-3, 3);
+    }
+  });
+});
+
+describe('pocket coverage in necks', () => {
+  it('fills the strip a wide stepover leaves in a neck narrower than two stepovers', async () => {
+    const { StockSim } = await import('../../sim/src/index.js');
+    const { normalize, offsetPolygons, pointInPolygon } = await import('../src/index.js');
+    // body plus an 8 mm arm: with a 3.175 mm tool at 95% stepover the arm's tool-centre region (1.65 mm thick) has no inner ring
+    const j = newJob('neck', { width: 80, length: 60, thickness: 10 });
+    j.shapes.push({ id: 'body', polyline: rect(10, 10, 30, 30) });
+    j.shapes.push({ id: 'arm', polyline: rect(40, 20, 25, 8) });
+    j.ops.push({ id: 'p', type: 'pocket', toolId: 't102', shapeIds: ['body', 'arm'], depth: 2, depthPerPass: 2, entry: 'plunge', stepover: 3.0 } as PocketOp);
+    const [tp] = generateToolpaths(j);
+    expect(tp.warnings).toEqual([]);
+    const s = new StockSim(j, [tp], { resolution: 0.15, keyframeEvery: 0 }); s.runAll();
+    const region = normalize([rect(10, 10, 30, 30), rect(40, 20, 25, 8)]); const inner = offsetPolygons(region, -(3.175 / 2 + 0.2));
+    let uncut = 0;
+    for (let jj = 0; jj < s.h; jj++) for (let i = 0; i < s.w; i++) { const p = { x: s.x0 + i * s.res, y: s.y0 + jj * s.res }; if (inner.some(l => pointInPolygon(p, l)) && s.heights[jj * s.w + i] > -1.99) uncut++; }
+    expect(uncut).toBe(0);
+  });
+});

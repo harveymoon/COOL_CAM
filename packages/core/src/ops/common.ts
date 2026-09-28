@@ -19,6 +19,8 @@ export interface OpContext {
   stockBottom: number;
   /** Z levels to cut, from first pass to final (absolute). */
   passes: number[];
+  /** Depth per pass actually used for `passes` (mm). */
+  stepdown: number;
   warnings: string[];
 }
 
@@ -29,7 +31,8 @@ export function makeContext(job: Job, op: OpBase): OpContext {
   const feed = op.feed ?? tool.feed ?? 1000;
   const plunge = op.plunge ?? tool.plunge ?? Math.round(feed * 0.4);
   const start = op.startDepth ?? 0;
-  const dpp = op.depthPerPass && op.depthPerPass > 0 ? op.depthPerPass : tool.diameter;
+  // default pass depth: one diameter for endmills / ball noses; a V-bit's nominal diameter is its widest point, so cap it at 2 mm
+  const dpp = op.depthPerPass && op.depthPerPass > 0 ? op.depthPerPass : tool.type === 'vbit' ? Math.min(2, tool.diameter) : tool.diameter;
   const total = op.depth - start;
   const passes: number[] = [];
   const warnings: string[] = [];
@@ -40,7 +43,7 @@ export function makeContext(job: Job, op: OpBase): OpContext {
   }
   if (tool.fluteLength && op.depth > tool.fluteLength) warnings.push(`Depth ${op.depth} mm exceeds flute length ${tool.fluteLength} mm of ${tool.name}.`);
   if (op.depth > job.stock.thickness + 1e-6) warnings.push(`Depth ${op.depth} mm is deeper than the stock (${job.stock.thickness} mm). The cutter will hit the wasteboard.`);
-  return { job, tool, rpm, feed, plunge, safeZ: b.top + job.safeZ, clearanceZ: b.top + job.clearanceZ, stockTop: b.top, stockBottom: b.bottom, passes, warnings };
+  return { job, tool, rpm, feed, plunge, safeZ: b.top + job.safeZ, clearanceZ: b.top + job.clearanceZ, stockTop: b.top, stockBottom: b.bottom, passes, stepdown: Math.min(dpp, Math.max(total, 0) || dpp), warnings };
 }
 
 export class MoveList {

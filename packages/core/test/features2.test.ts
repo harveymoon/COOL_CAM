@@ -112,3 +112,40 @@ describe('arc output', () => {
     const r = postGrbl(j, generateToolpaths(j)); expect(r.arcs).toBe(0);
   });
 });
+
+describe('v-carve safety', () => {
+  it('clamps an uncapped V-carve at the V flank / stock and says so once', () => {
+    const j = newJob('deep', { width: 100, length: 100, thickness: 12 });
+    j.shapes.push({ id: 'r', polyline: rect(10, 10, 40, 30) }); // 30 mm wide, 60° bit would want 26 mm
+    j.ops.push({ id: 'v', type: 'vcarve', toolId: 't302', shapeIds: ['r'], depth: 0 } as VCarveOp);
+    const [tp] = generateToolpaths(j);
+    const flank = (12.7 / 2) * 0.98 / Math.tan((60 * Math.PI) / 360);
+    expect(Math.min(...tp.moves.filter(m => m.kind === 'cut').map(m => m.z))).toBeCloseTo(-flank, 2);
+    expect(tp.warnings.filter(w => /clamped/.test(w))).toHaveLength(1);
+    // a thin stock clamps at the stock instead
+    j.stock.thickness = 5;
+    const [tp2] = generateToolpaths(j);
+    expect(Math.min(...tp2.moves.filter(m => m.kind === 'cut').map(m => m.z))).toBeGreaterThanOrEqual(-5 - 1e-9);
+    expect(tp2.warnings.some(w => /stock bottom/.test(w))).toBe(true);
+  });
+  it('flat clearing uses the endmill feeds and gets its own toolpath id', () => {
+    const j = newJob('flat', { width: 100, length: 60, thickness: 12 });
+    j.shapes.push({ id: 'r', polyline: rect(10, 10, 40, 20) });
+    j.ops.push({ id: 'v', type: 'vcarve', toolId: 't301', shapeIds: ['r'], depth: 3, flatToolId: 't102', feed: 600, plunge: 150, rpm: 24000 } as VCarveOp);
+    const [flat, v] = generateToolpaths(j);
+    expect(flat.opId).toBe('v:flat'); expect(v.opId).toBe('v');
+    expect(flat.rpm).toBe(18000); expect(v.rpm).toBe(24000);
+    // the endmill's own defaults (t102: feed 1200 / plunge 400; the helix bottom circle runs at 1.5× plunge), never the V-bit's 600 / 150
+    const flatFeeds = new Set(flat.moves.filter(m => m.kind === 'cut').map(m => m.f));
+    expect(flatFeeds.has(1200)).toBe(true); expect(flatFeeds.has(150)).toBe(false); expect(flat.moves.some(m => m.kind === 'plunge' && m.f === 150)).toBe(false);
+    expect(v.moves.find(m => m.kind === 'cut')?.f).toBe(600);
+  });
+  it('does not step straight across the gap between two close islands', () => {
+    const j = newJob('gap', { width: 100, length: 60, thickness: 12 });
+    j.shapes.push({ id: 'a', polyline: rect(10, 10, 10, 20) });
+    j.shapes.push({ id: 'b', polyline: rect(20.6, 10, 10, 20) }); // 0.6 mm apart
+    j.ops.push({ id: 'v', type: 'vcarve', toolId: 't301', shapeIds: ['a', 'b'], depth: 0, stepover: 0.4 } as VCarveOp);
+    const [tp] = generateToolpaths(j);
+    tp.moves.forEach((m, i) => { if (i === 0 || m.kind === 'rapid' || m.kind === 'retract') return; const p = tp.moves[i - 1]; const crosses = (p.x < 20.3) !== (m.x < 20.3); expect(crosses).toBe(false); });
+  });
+});

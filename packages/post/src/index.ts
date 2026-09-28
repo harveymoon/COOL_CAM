@@ -19,6 +19,8 @@ export interface PostOptions {
   arcs?: boolean;
   /** Arc fitting tolerance, mm (default 0.01). */
   arcTolerance?: number;
+  /** Extra comment lines for the header (e.g. the simulation verdict). */
+  headerNotes?: string[];
 }
 
 export interface PostResult {
@@ -36,6 +38,7 @@ export interface PostResult {
  * - Absolute mm, G17/G94, G54.
  * - Every tool (including the first) is introduced with `M6 T<n>` so Carbide Motion prompts and probes the BitSetter.
  * - Before each tool change and at the end, Z is raised in machine coordinates (G53) so the BitSetter move is safe.
+ * - The first traverse after a tool change happens at the job's safe Z (clearance Z is only used within an operation).
  * - No canned cycles or cutter compensation (GRBL 1.1 does not support them); pecks and offsets are already expanded.
  */
 export function postGrbl(job: Job, toolpaths: Toolpath[], opts: PostOptions = {}): PostResult {
@@ -49,6 +52,10 @@ export function postGrbl(job: Job, toolpaths: Toolpath[], opts: PostOptions = {}
   const fmt = (v: number) => { const s = v.toFixed(p); return s === '-0.000' || /^-0\.0+$/.test(s) ? s.slice(1) : s; };
 
   const b = stockBounds(job.stock);
+  // never let a NaN/Infinity reach the machine: refuse to post at all and say which op is broken
+  for (const tp of toolpaths) for (const m of tp.moves) if (!Number.isFinite(m.x) || !Number.isFinite(m.y) || !Number.isFinite(m.z) || (m.f !== undefined && !(m.f > 0))) {
+    return { gcode: '', lines: 0, toolChanges: 0, seconds: 0, arcs: 0, warnings: [`${tp.opName}: toolpath contains an invalid coordinate or feed (${m.kind} to ${m.x}, ${m.y}, ${m.z} F${m.f}); no G-code produced.`] };
+  }
   const usedTools = new Map<string, Tool>();
   for (const tp of toolpaths) if (tp.moves.length) usedTools.set(tp.toolId, getTool(job, tp.toolId));
   let seconds = 0;
@@ -58,6 +65,7 @@ export function postGrbl(job: Job, toolpaths: Toolpath[], opts: PostOptions = {}
   emit(`(Stock: ${job.stock.width} x ${job.stock.length} x ${job.stock.thickness} mm, origin ${job.stock.origin}, Z0 at stock ${job.stock.zOrigin})`);
   if (job.material) emit(`(Material: ${job.material})`);
   for (const t of usedTools.values()) emit(`(T${t.number} = ${t.name})`);
+  for (const note of opts.headerNotes ?? []) emit(`(${note.replace(/[()]/g, '')})`);
   emit('G90 G21 G17 G94');
   emit('G54');
 
@@ -85,6 +93,8 @@ export function postGrbl(job: Job, toolpaths: Toolpath[], opts: PostOptions = {}
       curTool = tp.toolId; toolChanges++;
       const rpm = Math.round(tp.rpm);
       if (rpm < machine.spindle.minRpm || rpm > machine.spindle.maxRpm) warnings.push(`${tp.opName}: ${rpm} rpm is outside the spindle range ${machine.spindle.minRpm}-${machine.spindle.maxRpm}.`);
+      const maxF = Math.max(...tp.moves.map(m => m.f ?? 0)); if (maxF > machine.maxFeed.xy) warnings.push(`${tp.opName}: feed ${maxF} mm/min exceeds the machine maximum ${machine.maxFeed.xy}; GRBL will clamp it.`);
+      const maxPlunge = Math.max(...tp.moves.filter(m => m.kind === 'plunge').map(m => m.f ?? 0), 0); if (maxPlunge > machine.maxFeed.z) warnings.push(`${tp.opName}: plunge feed ${maxPlunge} mm/min exceeds the Z maximum ${machine.maxFeed.z}.`);
       emit(`M3 S${rpm}`);
       if (opts.spindleDwell !== false) emit(`G4 P${machine.spindle.spinUpSeconds}`);
       spindleOn = true;
@@ -97,7 +107,9 @@ export function postGrbl(job: Job, toolpaths: Toolpath[], opts: PostOptions = {}
       const m = seg.m;
       if (seg.kind === 'arc') {
         const f = Math.round(m.f ?? 1000); const fw = f !== curF ? ` F${f}` : ''; curF = f;
-        emit(`${seg.cw ? 'G2' : 'G3'} X${fmt(m.x)} Y${fmt(m.y)} I${fmt(seg.cx - cx)} J${fmt(seg.cy - cy)}${fw}`);
+        // arcs are fitted at constant Z; the Z word is a belt-and-braces guard so a Z change can never be silently dropped
+        const zw = isNaN(cz) || Math.abs(m.z - cz) > 5e-4 ? ` Z${fmt(m.z)}` : '';
+        emit(`${seg.cw ? 'G2' : 'G3'} X${fmt(m.x)} Y${fmt(m.y)}${zw} I${fmt(seg.cx - cx)} J${fmt(seg.cy - cy)}${fw}`);
         cx = m.x; cy = m.y; cz = m.z; arcCount++; continue;
       }
       const words: string[] = [];
@@ -111,8 +123,12 @@ export function postGrbl(job: Job, toolpaths: Toolpath[], opts: PostOptions = {}
         if (xy.length && zw && !isNaN(cz)) {
           if (m.z < cz) { emit(`G0 ${xy.join(' ')}`); emit(`G0 ${zw}`); }
           else { emit(`G0 ${zw}`); emit(`G0 ${xy.join(' ')}`); }
-        } else if (xy.length && zw) { emit(`G0 ${zw}`); emit(`G0 ${xy.join(' ')}`); }
-        else emit(`G0 ${words.join(' ')}`);
+        } else if (xy.length && zw) {
+          // Z unknown (after a G53 move): traverse at the job's safe height, never lower, then descend
+          const zSafe = Math.max(m.z, startZ);
+          emit(`G0 Z${fmt(zSafe)}`); emit(`G0 ${xy.join(' ')}`);
+          if (m.z < zSafe - 5e-4) emit(`G0 Z${fmt(m.z)}`);
+        } else emit(`G0 ${words.join(' ')}`);
       } else {
         const f = Math.round(m.f ?? 1000);
         if (f !== curF) { words.push(`F${f}`); curF = f; }

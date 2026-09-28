@@ -34,7 +34,7 @@ export function generateDrill(job: Job, op: DrillOp): Toolpath {
     }
   }
   ml.retract(ctx.safeZ);
-  return { opId: op.id, opName: op.name ?? 'Drill', toolId: ctx.tool.id, rpm: ctx.rpm, moves: ml.moves, warnings: ctx.warnings };
+  return { opId: op.id, opName: op.name ?? 'Drill', toolId: ctx.tool.id, rpm: ctx.rpm, moves: ml.moves, warnings: ctx.warnings, stepdown: peck > 0 ? peck : op.depth };
 }
 
 /** Area centroid for closed loops; midpoint of bbox otherwise. */

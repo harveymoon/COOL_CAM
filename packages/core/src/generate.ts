@@ -27,8 +27,8 @@ export function generateToolpaths(job: Job): Toolpath[] {
   for (const op of job.ops.filter(o => o.enabled !== false)) {
     try {
       const tp = generateOp(job, op);
-      // advanced V-carve: the flat-clearing pass runs first with its own tool
-      if (op.type === 'vcarve') { const flat = flatMoves.get(op.id); flatMoves.delete(op.id); if (flat && flat.moves.length) out.push({ opId: op.id, opName: `${op.name ?? 'V-carve'} · flat clearing`, toolId: flat.toolId, rpm: flat.rpm, moves: flat.moves, warnings: flat.warnings }); }
+      // advanced V-carve: the flat-clearing pass runs first with its own tool and its own toolpath id (`<op>:flat`)
+      if (op.type === 'vcarve') { const flat = flatMoves.get(op.id); flatMoves.delete(op.id); if (flat && flat.moves.length) out.push({ opId: `${op.id}:flat`, opName: `${op.name ?? 'V-carve'} · flat clearing`, toolId: flat.toolId, rpm: flat.rpm, moves: flat.moves, warnings: flat.warnings, stepdown: flat.stepdown }); }
       out.push(tp);
     } catch (e) { out.push({ opId: op.id, opName: op.name ?? op.type, toolId: op.toolId, rpm: 0, moves: [], warnings: [`Generation failed: ${(e as Error).message}`] }); }
   }

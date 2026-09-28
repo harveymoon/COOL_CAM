@@ -17,6 +17,12 @@ export interface Toolpath {
   moves: Move[];
   /** Human-readable notes/warnings produced while generating. */
   warnings: string[];
+  /**
+   * Planned maximum axial engagement (mm of material above the tool's cutting surface) for any cut/ramp move, normally the
+   * depth per pass. The simulator flags cuts that engage more than this: they mean the planner assumed material was cleared
+   * that is still there, which is how cutters break.
+   */
+  stepdown?: number;
 }
 
 export interface ToolpathStats {

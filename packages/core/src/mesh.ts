@@ -140,15 +140,23 @@ export function contoursBelow(hm: Heightmap, level: number, domain?: { i0: numbe
   const i0 = domain?.i0 ?? 0, j0 = domain?.j0 ?? 0, i1 = domain?.i1 ?? w - 1, j1 = domain?.j1 ?? h - 1;
   // value with a 1-sample "air" border outside the domain so loops close at the domain edge
   const val = (i: number, j: number) => (i < i0 || j < j0 || i > i1 || j > j1 ? level + 1e6 : z[j * w + i]) - level;
-  const segs: Polyline[] = [];
-  const interp = (xa: number, ya: number, va: number, xb: number, yb: number, vb: number) => { const t = va / (va - vb); return { x: xa + (xb - xa) * t, y: ya + (yb - ya) * t }; };
+  // Every crossing point is identified by the grid edge it lies on (an exact integer key), never by coordinate proximity: two
+  // distinct contour vertices can sit closer together than any tolerance near a grid corner, and a tolerance-based chainer then
+  // joins the wrong pair and leaves a loop open. A dropped loop here would silently turn a hole (the model) into cuttable area.
+  type Pt = { x: number; y: number; key: number };
+  const segs: [Pt, Pt][] = [];
+  const gx = (i: number) => x0 + i * res, gy = (j: number) => y0 + j * res;
+  const interp = (xa: number, ya: number, va: number, xb: number, yb: number, vb: number, key: number): Pt => { const t = va / (va - vb); return { x: xa + (xb - xa) * t, y: ya + (yb - ya) * t, key }; };
+  const W2 = w + 2; // key space: horizontal edges (i,j) and vertical edges (i,j), each with room for the −1 border
+  const hKey = (i: number, j: number) => ((j + 1) * W2 + (i + 1)) * 2, vKey = (i: number, j: number) => ((j + 1) * W2 + (i + 1)) * 2 + 1;
   for (let j = j0 - 1; j <= j1; j++) for (let i = i0 - 1; i <= i1; i++) {
     const v00 = val(i, j), v10 = val(i + 1, j), v01 = val(i, j + 1), v11 = val(i + 1, j + 1);
     const idx = (v00 <= 0 ? 1 : 0) | (v10 <= 0 ? 2 : 0) | (v11 <= 0 ? 4 : 0) | (v01 <= 0 ? 8 : 0);
     if (idx === 0 || idx === 15) continue;
-    const X = x0 + i * res, Y = y0 + j * res, X1 = X + res, Y1 = Y + res;
-    const bottom = () => interp(X, Y, v00, X1, Y, v10), right = () => interp(X1, Y, v10, X1, Y1, v11), top = () => interp(X, Y1, v01, X1, Y1, v11), left = () => interp(X, Y, v00, X, Y1, v01);
-    const add = (a: { x: number; y: number }, b: { x: number; y: number }) => segs.push({ points: [a, b], closed: false });
+    const X = gx(i), Y = gy(j), X1 = gx(i + 1), Y1 = gy(j + 1);
+    const bottom = () => interp(X, Y, v00, X1, Y, v10, hKey(i, j)), top = () => interp(X, Y1, v01, X1, Y1, v11, hKey(i, j + 1));
+    const left = () => interp(X, Y, v00, X, Y1, v01, vKey(i, j)), right = () => interp(X1, Y, v10, X1, Y1, v11, vKey(i + 1, j));
+    const add = (a: Pt, b: Pt) => { if (a.key !== b.key) segs.push([a, b]); };
     switch (idx) {
       case 1: case 14: add(left(), bottom()); break;
       case 2: case 13: add(bottom(), right()); break;
@@ -159,5 +167,28 @@ export function contoursBelow(hm: Heightmap, level: number, domain?: { i0: numbe
       case 5: case 10: { const c = (v00 + v10 + v01 + v11) / 4 <= 0; if ((idx === 5) === c) { add(left(), top()); add(bottom(), right()); } else { add(left(), bottom()); add(right(), top()); } break; }
     }
   }
-  return chain(segs, res * 0.05).filter(l => l.closed && l.points.length >= 3).map(l => simplify(l, res * 0.15));
+  // assemble loops by walking the exact edge keys (every crossing is shared by exactly two cells, so every vertex has even degree)
+  const at = new Map<number, number[]>();
+  segs.forEach((s, k) => { for (const p of s) { const l = at.get(p.key); if (l) l.push(k); else at.set(p.key, [k]); } });
+  const used = new Uint8Array(segs.length);
+  const loops: Polyline[] = [];
+  let dropped = 0;
+  for (let k0 = 0; k0 < segs.length; k0++) {
+    if (used[k0]) continue;
+    used[k0] = 1;
+    const pts: { x: number; y: number }[] = [segs[k0][0]];
+    let cur = segs[k0][1]; const startKey = segs[k0][0].key;
+    let closed = false;
+    for (let guard = 0; guard <= segs.length; guard++) {
+      if (cur.key === startKey) { closed = true; break; }
+      pts.push({ x: cur.x, y: cur.y });
+      const next = (at.get(cur.key) ?? []).find(k => !used[k]);
+      if (next === undefined) break;
+      used[next] = 1;
+      const s = segs[next]; cur = s[0].key === cur.key ? s[1] : s[0];
+    }
+    if (closed && pts.length >= 3) loops.push({ points: pts, closed: true }); else dropped++;
+  }
+  if (dropped) throw new Error(`contoursBelow: ${dropped} contour(s) did not close (internal error, refusing to guess the cut region)`);
+  return loops.map(l => simplify(l, res * 0.15));
 }

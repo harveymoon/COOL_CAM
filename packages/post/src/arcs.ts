@@ -11,10 +11,11 @@ export function fitArcs(moves: Move[], start: Move, tol = 0.01, minPts = 5): Seg
   let i = 0;
   while (i < moves.length) {
     const m = moves[i];
-    if (m.kind !== 'cut') { out.push({ kind: 'line', m }); i++; continue; }
+    const prev = i === 0 ? start : moves[i - 1];
+    // a cut that changes Z (a step down between passes) is never part of an arc: G2/G3 here carries no Z word
+    if (m.kind !== 'cut' || Math.abs(prev.z - m.z) > 1e-6) { out.push({ kind: 'line', m }); i++; continue; }
     // collect a run of cut moves at the same z/feed
     let j = i; while (j + 1 < moves.length && moves[j + 1].kind === 'cut' && Math.abs(moves[j + 1].z - m.z) < 1e-6 && moves[j + 1].f === m.f) j++;
-    const prev = i === 0 ? start : moves[i - 1];
     const pts = [prev, ...moves.slice(i, j + 1)];
     if (pts.length - 1 < minPts) { for (let k = i; k <= j; k++) out.push({ kind: 'line', m: moves[k] }); i = j + 1; continue; }
     // greedy arc extraction over pts (pts[0] is the current position)

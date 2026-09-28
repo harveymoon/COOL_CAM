@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { rect, parseStl, toBinaryStl, meshBBox, meshHeightmap, offsetSurface, contoursBelow, placementFor, placedMesh, newJob, generateToolpaths, sampleHeightmap, toolProfile, getTool, signedArea, normalize, IDENTITY_PLACEMENT } from '../src/index.js';
+import { rect, parseStl, toBinaryStl, meshBBox, meshHeightmap, offsetSurface, contoursBelow, placementFor, placedMesh, newJob, generateToolpaths, sampleHeightmap, toolProfile, getTool, signedArea, normalize, IDENTITY_PLACEMENT, surfaceFor } from '../src/index.js';
 import type { Model, Rough3DOp, Finish3DOp } from '../src/index.js';
 
 const stlDir = path.resolve(__dirname, '../../../examples/stl');
@@ -196,5 +196,31 @@ describe('machining boundary', () => {
     const cuts = f.moves.filter(m => m.kind !== 'rapid' && m.kind !== 'retract');
     expect(cuts.length).toBeGreaterThan(100);
     for (const m of cuts) { expect(m.x).toBeGreaterThan(47.5 - 12 - 0.3); expect(m.x).toBeLessThan(47.5 + 12 + 0.3); expect(m.y).toBeGreaterThan(47.5 - 12 - 0.3); expect(m.y).toBeLessThan(47.5 + 12 + 0.3); }
+  });
+});
+
+describe('contour robustness', () => {
+  it('never loses the hole around a model when the contour passes close to grid corners (found by fuzzing)', () => {
+    // dome cap scaled 1.3 and rotated, 1/8" endmill, containment "center" with a negative boundary offset: at Z-9.74 the old
+    // tolerance-based chainer left the dome's contour open and dropped it, turning the whole domain into cut region.
+    const mesh = parseStl(fs.readFileSync(path.join(stlDir, 'dome-cap-2in-12mm.stl')));
+    const job = newJob('fuzz23', { width: 71, length: 88, thickness: 18 });
+    const model: Model = { id: 'model', positions: Array.from(mesh.positions), placement: { x: 33.770803722552955, y: 45.926962186116725, z: -15.600000381469727, rotX: 0, rotY: 0, rotZ: 30, scale: 1.3 } };
+    job.models = [model];
+    const op: Rough3DOp = { id: 'rough', type: 'rough3d', toolId: 't102', modelId: 'model', shapeIds: [], boundaryMode: 'silhouette', containment: 'center', boundary: -1.6, depth: 12.87, depthPerPass: 4.87, stockToLeave: 0.43, entry: 'plunge' };
+    job.ops = [op];
+    const [tp] = generateToolpaths(job);
+    expect(tp.moves.length).toBeGreaterThan(100);
+    expect(tp.warnings.filter(w => /skipped/.test(w))).toEqual([]);
+    // no cutting move may sit inside the dome's silhouette above the dome surface: check against a fine heightmap
+    const bb = meshBBox(placedMesh(model));
+    const hm = meshHeightmap(placedMesh(model), 0.1, { x0: bb.min[0] - 5, y0: bb.min[1] - 5, x1: bb.max[0] + 5, y1: bb.max[1] + 5 }, bb.min[2]);
+    const r = 3.175 / 2; let worst = Infinity;
+    for (const m of tp.moves) { if (m.kind === 'rapid' || m.kind === 'retract') continue; for (const [dx, dy] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) worst = Math.min(worst, m.z - sampleHeightmap(hm, m.x + dx, m.y + dy)); }
+    expect(worst).toBeGreaterThan(0.3);
+    // and the level regions nest: every level's contour keeps the dome as a hole
+    const { contoursBelow: cb, surfaceFor: sf } = { contoursBelow, surfaceFor };
+    const surf = sf(job, op, getTool(job, 't102'), 0.3175);
+    for (const z of [-4.87, -9.74, -12.13]) { const loops = cb(surf.off, z + 1e-4, surf.domain); expect(loops.length).toBeGreaterThanOrEqual(2); expect(loops.some(l => signedArea(l) < 0 || loops.length >= 2)).toBe(true); }
   });
 });

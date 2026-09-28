@@ -80,7 +80,7 @@ export interface DrillOp extends OpBase {
   type: 'drill';
   /** Peck depth in mm; 0 or undefined = single plunge. */
   peck?: number;
-  /** Dwell seconds at bottom. */
+  /** Dwell seconds at bottom. Accepted for forward compatibility; not emitted by the generator yet. */
   dwell?: number;
 }
 

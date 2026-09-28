@@ -26,10 +26,13 @@ export class JobState {
     return this.job;
   }
   invalidate() { this.toolpaths = null; }
-  slug(name = this.require().name): string { return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'job'; }
-  /** Persist the job (and the generated toolpaths, so the viewer can show them without regenerating). */
+  /** Replace the in-memory job (new_job / load_job). Unlike require(), never re-reads current.json. */
+  set(job: Job): Job { this.job = job; this.invalidate(); return job; }
+  slug(name = this.current().name): string { return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'job'; }
+  private current(): Job { if (!this.job) throw new Error('No job loaded. Call new_job or load_job first.'); return this.job; }
+  /** Persist the in-memory job. Deliberately does not go through require(): a newer current.json (e.g. saved by the viewer) must not replace a job that was just created or loaded. */
   save(): string {
-    const job = this.require();
+    const job = this.current();
     const file = path.join(this.jobsDir, `${this.slug()}.json`);
     const payload = JSON.stringify({ ...job, _savedAt: new Date().toISOString() }, null, 1);
     fs.writeFileSync(file, payload);
@@ -44,8 +47,7 @@ export class JobState {
     if (!fs.existsSync(file)) throw new Error(`Job file not found: ${nameOrPath}`);
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
     delete raw._savedAt; delete raw._rev;
-    this.job = raw as Job; this.invalidate();
-    return this.job;
+    return this.set(raw as Job);
   }
   list(): string[] {
     return fs.readdirSync(this.jobsDir).filter(f => f.endsWith('.json') && f !== 'current.json').map(f => f.replace(/\.json$/, ''));

@@ -40,7 +40,7 @@ export function OpEditorForm({ id }: { id: string }) {
       )}
 
       <Section title="Feeds and speeds">
-        <Sel label="tool" value={op.toolId} options={job.tools.map(t => ({ value: t.id, label: `T${t.number} ${t.name}` }))} onChange={v => u({ toolId: v })} />
+        <Sel label="tool" value={op.toolId} options={[...job.tools.map(t => ({ value: t.id, label: `T${t.number} ${t.name}` })), ...ui.library.filter(l => !job.tools.some(t => t.id === l.id)).map(t => ({ value: t.id, label: `＋ T${t.number} ${t.name} (from library)` }))]} hint="tools in this job, then the rest of your library (picking one adds it to the job)" onChange={v => { const lib = ui.library.find(t => t.id === v); ui.setJob(j => ({ ...j, tools: lib && !j.tools.some(t => t.id === v) ? [...j.tools, { ...lib }].sort((a, b) => a.number - b.number) : j.tools, ops: j.ops.map(o => (o.id === id ? ({ ...o, toolId: v } as Op) : o)) })); }} />
         <div className="grid3">
           <Num label="rpm" value={op.rpm} step={500} placeholder={String(tool?.rpm ?? '')} onChange={v => u({ rpm: v })} />
           <Num label="feed mm/min" value={op.feed} step={50} placeholder={String(tool?.feed ?? '')} onChange={v => u({ feed: v })} />
@@ -191,7 +191,8 @@ function KeyholeFields({ op, u }: { op: KeyholeOp; u: (p: Record<string, unknown
   );
 }
 function DrillFields({ op, u }: { op: DrillOp; u: (p: Record<string, unknown>) => void }) {
-  return <div className="grid2"><Num label="peck" value={op.peck} step={0.5} hint="0 = single plunge" onChange={v => u({ peck: v })} /><Num label="dwell s" value={op.dwell} step={0.1} onChange={v => u({ dwell: v })} /></div>;
+  // `dwell` exists on DrillOp but is not emitted by the generator/post yet, so it is not offered here
+  return <div className="grid2"><Num label="peck" value={op.peck} step={0.5} hint="0 = single plunge" onChange={v => u({ peck: v })} /></div>;
 }
 
 function Rough3DFields({ op, u, dia }: { op: Rough3DOp; u: (p: Record<string, unknown>) => void; dia?: number }) {

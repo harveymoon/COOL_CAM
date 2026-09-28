@@ -190,3 +190,17 @@ button.mini { padding: 1px 6px; font-size: 11px; }
 .tl-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
 .tl-knob { position: absolute; bottom: 0; left: -4px; width: 10px; height: 9px; background: var(--accent); }
 .tl-tip { position: absolute; bottom: 34px; background: var(--panel-2); border: 1px solid var(--border); padding: 4px 8px; font-size: 11px; white-space: nowrap; pointer-events: none; z-index: 10; color: var(--text); }
+
+/* tool library: list / grid views */
+.tool-lib.grid-mode { grid-template-columns: 1fr 320px; }
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; max-height: 420px; overflow: auto; border: 1px solid var(--border); padding: 8px; background: var(--bg); }
+.tool-card { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px; border: 1px solid var(--border); background: var(--panel); cursor: pointer; text-align: center; }
+.tool-card:hover { border-color: var(--accent); }
+.tool-card.sel { border-color: var(--accent); background: #1b2b38; box-shadow: inset 0 0 0 1px var(--accent); }
+.tool-card .tnum { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+.tool-card .tname { font-size: 11px; line-height: 1.25; max-height: 2.5em; overflow: hidden; }
+.tool-card .tmeta { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.tool-card .injob { font-family: var(--mono); font-size: 9px; color: var(--ok); text-transform: uppercase; letter-spacing: 0.08em; }
+.tool-preview { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.lib-path { font-family: var(--mono); font-size: 10px; color: var(--muted); word-break: break-all; }
+.inline-err { color: var(--danger); font-size: 11px; }

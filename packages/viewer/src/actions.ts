@@ -9,26 +9,29 @@ export function opDefaultName(op: Op) { return op.type === 'profile' ? `Profile 
 
 export function addOperation(ui: Ui, type: Op['type']) {
   const job = ui.job; if (!job) return;
-  const tool = job.tools[0]; const shapeIds = ui.selectedShapes.length ? ui.selectedShapes : job.shapes.slice(0, 1).map(s => s.id);
+  // a job whose tool table is empty (or lacks the type this op wants) borrows from the library; the chosen tool is added to the job below
+  const pool = [...job.tools, ...ui.library.filter(l => !job.tools.some(t => t.id === l.id))];
+  const tool = job.tools[0] ?? pool[0]; const shapeIds = ui.selectedShapes.length ? ui.selectedShapes : job.shapes.slice(0, 1).map(s => s.id);
   const base = { id: uid(type), toolId: tool?.id ?? 't201', shapeIds, depth: Math.min(job.stock.thickness, 5), depthPerPass: tool ? Math.min(tool.diameter, job.stock.thickness) : 3 };
   let op: Op;
   const modelId = ui.selectedModel ?? job.models?.[0]?.id;
   if (type === 'pocket') op = { ...base, type: 'pocket', entry: 'helix' };
   else if (type === 'profile') op = { ...base, type: 'profile', side: 'outside', depth: job.stock.thickness, tabs: { count: 4, width: 6, height: 2 } };
   else if (type === 'drill') op = { ...base, type: 'drill', depth: job.stock.thickness, peck: 3 };
-  else if (type === 'vcarve') { const v = job.tools.find(t => t.type === 'vbit'); op = { ...base, type: 'vcarve', toolId: v?.id ?? base.toolId, depth: 0, stepover: 0.4 }; }
-  else if (type === 'keyhole') { const k = job.tools.find(t => t.type === 'keyhole'); op = { ...base, type: 'keyhole', toolId: k?.id ?? base.toolId, depth: Math.min(8, job.stock.thickness - 2), length: 20, angle: 90 }; }
+  else if (type === 'vcarve') { const v = pool.find(t => t.type === 'vbit'); op = { ...base, type: 'vcarve', toolId: v?.id ?? base.toolId, depth: 0, stepover: 0.4 }; }
+  else if (type === 'keyhole') { const k = pool.find(t => t.type === 'keyhole'); op = { ...base, type: 'keyhole', toolId: k?.id ?? base.toolId, depth: Math.min(8, job.stock.thickness - 2), length: 20, angle: 90 }; }
   else if (type === 'rough3d') {
     if (!modelId) return;
-    const flat = job.tools.find(t => t.type === 'endmill') ?? tool;
+    const flat = pool.find(t => t.type === 'endmill') ?? tool;
     op = { ...base, type: 'rough3d', modelId, shapeIds: [], toolId: flat?.id ?? base.toolId, depth: job.stock.thickness, depthPerPass: Math.min(3, flat?.diameter ?? 3), stepover: flat ? +(flat.diameter * 0.45).toFixed(2) : 3, stockToLeave: 0.3, entry: 'helix', boundaryMode: 'silhouette', containment: 'inside' };
   } else {
     if (!modelId) return;
-    const ball = job.tools.find(t => t.type === 'ballnose') ?? tool;
+    const ball = pool.find(t => t.type === 'ballnose') ?? tool;
     op = { ...base, type: 'finish3d', modelId, shapeIds: [], toolId: ball?.id ?? base.toolId, depth: job.stock.thickness, stepover: ball ? +(ball.diameter * 0.12).toFixed(2) : 0.5, axis: 'x', boundaryMode: 'silhouette', containment: 'inside' };
   }
   if (tool && job.material) { try { const f = feedsAndSpeeds(tool, job.material as MaterialId); Object.assign(op, { rpm: f.rpm, feed: f.feed, plunge: f.plunge, depthPerPass: Math.min(f.depthPerPass, op.depth) }); if (op.type === 'pocket') op.stepover = f.stepover; } catch { /* unknown material */ } }
-  ui.setJob(j => ({ ...j, ops: [...j.ops, op] })); openOpEditor(ui, op.id);
+  const chosen = pool.find(t => t.id === op.toolId);
+  ui.setJob(j => ({ ...j, tools: chosen && !j.tools.some(t => t.id === chosen.id) ? [...j.tools, { ...chosen }].sort((a, b) => a.number - b.number) : j.tools, ops: [...j.ops, op] })); openOpEditor(ui, op.id);
 }
 export function moveOperation(ui: Ui, id: string, dir: -1 | 1) {
   ui.setJob(j => { const ops = [...j.ops]; const i = ops.findIndex(o => o.id === id); const k = i + dir; if (i < 0 || k < 0 || k >= ops.length) return j; [ops[i], ops[k]] = [ops[k], ops[i]]; return { ...j, ops }; });
@@ -62,8 +65,14 @@ export async function importFile(ui: Ui, file: File, placeAtCorner = true) {
   ui.setSelectedShapes(shapes.map(s => s.id));
 }
 
-export function downloadGcode(ui: Ui) {
+export function downloadGcode(ui: Ui, force = false) {
   const job = ui.job, g = ui.derived?.gcode; if (!job || !g) return;
+  const errors = ui.sim?.summary.events.filter(e => e.severity === 'error') ?? [];
+  if (ui.simBusy && !force) { ui.openModal({ kind: 'confirm', title: 'Simulation still running', message: 'The simulation has not finished checking this job. Download the G-code anyway?', onConfirm: () => downloadGcode(ui, true) }); return; }
+  if (errors.length && !force) {
+    ui.openModal({ kind: 'confirm', title: `Simulation reports ${errors.length} problem(s)`, message: `${errors.slice(0, 5).map(e => e.message).join(' ')}${errors.length > 5 ? ' …' : ''} These moves can break a cutter. Download anyway?`, onConfirm: () => downloadGcode(ui, true) });
+    return;
+  }
   const blob = new Blob([g], { type: 'text/plain' }); const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = `${job.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.nc`; a.click(); URL.revokeObjectURL(a.href);
 }
@@ -164,7 +173,9 @@ export function offsetShapes(ui: Ui, d: number) {
   const closed = normalize(sel.filter(s => s.polyline.closed).map(s => s.polyline));
   const out = offsetPolygons(closed, d).filter(l => Math.abs(signedArea(l)) > 0.01);
   if (!out.length) return;
-  const shapes: Shape[] = out.map((pl, i) => ({ id: `${sel[0].id}_off${d > 0 ? '+' : ''}${d}${out.length > 1 ? `_${i + 1}` : ''}`, name: `offset ${d}`, polyline: pl }));
+  // ids must stay unique even when the same offset is applied again (the originals are kept)
+  const taken = new Set(job.shapes.map(s => s.id));
+  const shapes: Shape[] = out.map((pl, i) => { const base = `${sel[0].id}_off${d > 0 ? '+' : ''}${d}${out.length > 1 ? `_${i + 1}` : ''}`; const id = taken.has(base) ? uid(base) : base; taken.add(id); return { id, name: `offset ${d}`, polyline: pl }; });
   ui.setJob(j => ({ ...j, shapes: [...j.shapes, ...shapes] }));
   openShapeParams(ui, shapes.map(s => s.id));
 }

@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { buildToolModel, disposeToolModel, toolSignature, type ToolModel } from './toolGeometry';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { stockBounds, getTool, bbox, placedMesh } from '@cool-cam/core';
-import type { Job, Toolpath } from '@cool-cam/core';
+import type { Job, Toolpath, Tool } from '@cool-cam/core';
 
 export interface SimGridInfo { w: number; h: number; res: number; x0: number; y0: number; top: number; bottom: number }
 
@@ -98,9 +99,13 @@ export class SceneController {
   private pathGeom: THREE.BufferGeometry | null = null;
   private baseColors: Float32Array | null = null;
   private flat: Flat[] = [];
-  private toolMesh: THREE.Mesh | null = null;
+  /** Rendered cutters (one per tool id in the job), built from the same geometry as the library thumbnails. Tip at the origin. */
+  private toolModels = new Map<string, ToolModel>();
+  private toolShown: string | null = null;
   private stockMesh: THREE.Mesh | null = null;
   private simMesh: THREE.Mesh | null = null;
+  /** Left-drag orbit about the point that was under the cursor at press (OrbitControls only handles zoom and pan). */
+  private orbit: { pivot: THREE.Vector3; start: [number, number]; pos0: THREE.Vector3; target0: THREE.Vector3; right0: THREE.Vector3 } | null = null;
   private simGeom: THREE.BufferGeometry | null = null;
   private simInfo: SimGridInfo | null = null;
   private simIndexAll: Uint32Array | null = null;
@@ -174,6 +179,7 @@ export class SceneController {
     this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(el);
     const dom = this.renderer.domElement;
     dom.addEventListener('pointerdown', this.onDown); dom.addEventListener('pointerup', this.onClick); dom.addEventListener('pointermove', this.onMove); dom.addEventListener('pointerleave', () => { this.mouse.x = -1; });
+    dom.addEventListener('pointercancel', () => { this.orbit = null; this.down = null; });
     window.addEventListener('keydown', this.onKey); window.addEventListener('keyup', this.onKey);
     this.loop(0);
   }
@@ -191,6 +197,7 @@ export class SceneController {
     this.controls?.dispose();
     const c = new OrbitControls(cam, this.renderer.domElement);
     c.enableDamping = true; c.dampingFactor = 0.12;
+    c.enableRotate = false; // rotation is done by the cursor-pivot orbit below; OrbitControls keeps wheel zoom and right-drag pan
     if (target) c.target.copy(target);
     this.controls = c;
     if (this.tc) this.tc.camera = cam;
@@ -224,13 +231,68 @@ export class SceneController {
   };
 
   // ---------- picking ----------
-  private onDown = (e: PointerEvent) => { if (e.button === 0) this.down = [e.clientX, e.clientY]; };
+  private onDown = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    this.down = [e.clientX, e.clientY];
+    if (this.tc.axis || this.tc.dragging || !this.controls.enabled) return; // the press landed on the move gizmo
+    // orbit pivot: whatever is under the cursor (simulated stock, model, spoilboard, stock box), else the stock-top plane
+    const pivot = this.pointUnderCursor(e) ?? this.controls.target.clone();
+    const pos0 = this.camera.position.clone(), target0 = this.controls.target.clone();
+    const view = new THREE.Vector3().subVectors(target0, pos0).normalize();
+    const right0 = new THREE.Vector3().crossVectors(view, this.camera.up).normalize();
+    if (right0.lengthSq() < 1e-9) right0.set(1, 0, 0);
+    this.orbit = { pivot, start: [e.clientX, e.clientY], pos0, target0, right0 };
+    try { this.renderer.domElement.setPointerCapture(e.pointerId); } catch { /* not supported */ }
+  };
   private onMove = (e: PointerEvent) => {
     const r = this.renderer.domElement.getBoundingClientRect();
     this.mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
+    if (this.orbit) { this.applyOrbit(e, r); return; }
     if (this.cubeVisible) this.updateCubeHover();
   };
+  /** World point under a pointer event: nearest visible mesh of the job, else the stock-top plane. */
+  private pointUnderCursor(e: PointerEvent): THREE.Vector3 | null {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    const ray = new THREE.Raycaster(); ray.setFromCamera(ndc, this.camera);
+    const meshes: THREE.Object3D[] = [];
+    this.jobGroup.traverseVisible(o => { if ((o as THREE.Mesh).isMesh && !(o.userData.fill)) meshes.push(o); });
+    const hit = ray.intersectObjects(meshes, false)[0];
+    if (hit) return hit.point;
+    const top = this.job ? stockBounds(this.job.stock).top : 0;
+    const pt = new THREE.Vector3();
+    return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -top), pt) ? pt : null;
+  }
+  /**
+   * Rotate camera and orbit target rigidly about the pivot: azimuth around world Z, elevation around the camera's right axis
+   * at press. A rigid rotation keeps the pivot at the same screen position, so the point you grabbed stays under the cursor.
+   */
+  private applyOrbit(e: PointerEvent, r: DOMRect) {
+    const o = this.orbit!;
+    const speed = (2 * Math.PI) / Math.max(1, r.height);
+    const az = -(e.clientX - o.start[0]) * speed;
+    let el = -(e.clientY - o.start[1]) * speed;
+    const up = new THREE.Vector3(0, 0, 1);
+    const place = (elev: number) => {
+      const q = new THREE.Quaternion().setFromAxisAngle(up, az).multiply(new THREE.Quaternion().setFromAxisAngle(o.right0, elev));
+      const pos = o.pos0.clone().sub(o.pivot).applyQuaternion(q).add(o.pivot);
+      const target = o.target0.clone().sub(o.pivot).applyQuaternion(q).add(o.pivot);
+      return { pos, target, polar: new THREE.Vector3().subVectors(pos, target).angleTo(up) };
+    };
+    // keep the camera off the poles (OrbitControls' polar limits): shrink the elevation until the view is valid
+    let cand = place(el);
+    const minP = 0.02, maxP = Math.PI - 0.02;
+    if (cand.polar < minP || cand.polar > maxP) {
+      let lo = 0, hi = el;
+      for (let i = 0; i < 20; i++) { const mid = (lo + hi) / 2; const c = place(mid); if (c.polar < minP || c.polar > maxP) hi = mid; else lo = mid; }
+      el = lo; cand = place(el);
+    }
+    this.camera.position.copy(cand.pos); this.controls.target.copy(cand.target);
+    this.camera.up.copy(up); this.camera.lookAt(cand.target);
+    if (this.camera === this.ortho) this.ortho.updateProjectionMatrix();
+  }
   private onClick = (e: PointerEvent) => {
+    if (this.orbit) { this.orbit = null; try { this.renderer.domElement.releasePointerCapture(e.pointerId); } catch { /* ignore */ } }
     if (!this.down) return; // no matching press on the canvas (e.g. a drag that started on the gizmo)
     const moved = Math.hypot(e.clientX - this.down[0], e.clientY - this.down[1]); this.down = null;
     if (moved > 4 || e.button !== 0) return;
@@ -406,7 +468,7 @@ export class SceneController {
   setJob(job: Job | null, toolpaths: Toolpath[]) {
     const first = this.job === null && job !== null;
     this.job = job; this.toolpaths = toolpaths;
-    this.jobGroup.clear(); this.pathLines = null; this.pathGeom = null; this.toolMesh = null; this.stockMesh = null; this.flat = []; this.shapeObjs = [];
+    this.jobGroup.clear(); this.pathLines = null; this.pathGeom = null; this.stockMesh = null; this.flat = []; this.shapeObjs = []; this.toolShown = null;
     if (this.simMesh) { this.jobGroup.add(this.simMesh); if (this.spoilboard) this.jobGroup.add(this.spoilboard); if (this.skirt) this.jobGroup.add(this.skirt); if (this.simBottom) this.jobGroup.add(this.simBottom); for (const m of [this.simMesh, this.skirt, this.simBottom]) if (m) { (m.material as THREE.MeshLambertMaterial).map = this.texture(); (m.material as THREE.MeshLambertMaterial).needsUpdate = true; } }
     if (!job) { this.updateGizmo(); return; }
     const b = stockBounds(job.stock);
@@ -446,9 +508,11 @@ export class SceneController {
     this.pathGeom.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     this.baseColors = Float32Array.from(col);
     this.pathLines = new THREE.LineSegments(this.pathGeom, new THREE.LineBasicMaterial({ vertexColors: true })); this.jobGroup.add(this.pathLines);
-    const dia = toolpaths[0] ? getTool(job, toolpaths[0].toolId).diameter : 6;
-    this.toolMesh = new THREE.Mesh(new THREE.CylinderGeometry(dia / 2, dia / 2, 25, 24), new THREE.MeshLambertMaterial({ color: 0xffb454, transparent: true, opacity: 0.85 }));
-    this.toolMesh.rotation.x = Math.PI / 2; this.jobGroup.add(this.toolMesh);
+    // one rendered cutter per tool used by the toolpaths; rebuilt only when its parameters change
+    const wanted = new Map<string, Tool>(); for (const tp of toolpaths) { try { wanted.set(tp.toolId, getTool(job, tp.toolId)); } catch { /* unknown tool */ } }
+    for (const [id, m] of this.toolModels) if (!wanted.has(id) || toolSignature(wanted.get(id)!) !== m.signature) { disposeToolModel(m); this.toolModels.delete(id); }
+    for (const [id, t] of wanted) if (!this.toolModels.has(id)) this.toolModels.set(id, buildToolModel(t));
+    for (const m of this.toolModels.values()) { m.group.visible = false; this.jobGroup.add(m.group); }
     this.applySelection(); this.applyActiveOp(); this.applyProgress(); this.updateGizmo(); this.setShowShapes(this.showShapes);
     if (first) this.fit();
   }
@@ -513,11 +577,13 @@ export class SceneController {
     if (!this.pathGeom || !this.pathLines) return;
     const total = this.flat.length; const idx = Math.max(0, Math.min(total, this.progress)); const whole = Math.floor(idx);
     this.pathGeom.setDrawRange(0, this.showPaths ? whole * 2 : 0); this.pathLines.visible = this.showPaths;
-    if (this.toolMesh && total && this.job) {
+    if (total && this.job) {
       const tgt = this.flat[Math.min(total - 1, whole)]; const prev = whole > 0 ? this.flat[whole - 1] : { x: 0, y: 0, z: this.flat[0].z }; const f = whole >= total ? 1 : idx - whole;
-      this.toolMesh.position.set(prev.x + (tgt.x - prev.x) * f, prev.y + (tgt.y - prev.y) * f, prev.z + (tgt.z - prev.z) * f + 12.5);
       const tp = this.toolpaths.find(t => t.opId === tgt.opId);
-      if (tp) { const d = getTool(this.job, tp.toolId).diameter; const s = d / ((this.toolMesh.geometry as THREE.CylinderGeometry).parameters.radiusTop * 2); this.toolMesh.scale.set(s, 1, s); }
+      const id = tp?.toolId ?? null;
+      if (id !== this.toolShown) { for (const [k, m] of this.toolModels) m.group.visible = k === id; this.toolShown = id; }
+      const m = id ? this.toolModels.get(id) : null;
+      if (m) m.group.position.set(prev.x + (tgt.x - prev.x) * f, prev.y + (tgt.y - prev.y) * f, prev.z + (tgt.z - prev.z) * f);
     }
   }
   setShowStock(v: boolean) { this.showStock = v; for (const m of [this.simMesh, this.skirt, this.simBottom, this.spoilboard]) if (m) m.visible = v; if (this.stockMesh) this.stockMesh.visible = v && !this.simMesh; }

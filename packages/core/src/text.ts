@@ -1,4 +1,7 @@
-import * as opentype from 'opentype.js';
+import * as opentypeNs from 'opentype.js';
+// opentype.js ships a CommonJS/UMD build: under Node ESM the namespace only carries `default`, under Vite it carries the named
+// exports. Pick whichever form actually has `parse` so the MCP server (Node) and the viewer (Vite) both work.
+const opentype: typeof opentypeNs = (opentypeNs as unknown as { parse?: unknown }).parse ? opentypeNs : (opentypeNs as unknown as { default: typeof opentypeNs }).default;
 import type { Polyline } from './geometry/polyline.js';
 import { chain, cubicPoints, quadPoints, simplify } from './geometry/polyline.js';
 import type { Vec2 } from './geometry/vec.js';

@@ -2,10 +2,14 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import fs from 'node:fs';
 import path from 'node:path';
+import { resolveToolLibrary, readToolLibrary, writeToolLibrary } from '../core/src/node-paths';
 
 const root = path.resolve(__dirname, '../..');
 const jobsDir = process.env.COOL_CAM_JOBS_DIR ?? path.join(root, 'jobs');
-const libraryFile = process.env.COOL_CAM_LIBRARY ?? path.join(root, 'library', 'tools.json');
+// the repo's library/tools.json is the bundled default; the user's own library lives in their application-data folder
+const bundledLibrary = path.join(root, 'library', 'tools.json');
+const library = resolveToolLibrary({ bundled: bundledLibrary });
+const libraryFile = library.file;
 const FONT_DIRS = ['/System/Library/Fonts/Supplemental', '/System/Library/Fonts', '/Library/Fonts', path.join(process.env.HOME ?? '', 'Library/Fonts'), path.join(root, 'library', 'fonts')];
 function listFonts(): { name: string; file: string }[] {
   const out: { name: string; file: string }[] = [];
@@ -27,14 +31,16 @@ function jobsApi(): Plugin {
           const hit = listFonts().find(f => f.name === name); if (!hit) { res.statusCode = 404; res.end('font not found'); return; }
           res.setHeader('content-type', 'font/ttf'); res.end(fs.readFileSync(hit.file)); return;
         }
+        if (url === '/api/tools/info') { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ file: libraryFile, source: library.source, userDir: library.userDir, bundled: bundledLibrary })); return; }
+        if (url === '/api/tools/defaults') { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(readToolLibrary(bundledLibrary))); return; }
         if (url === '/api/tools') {
           if (req.method === 'PUT') {
             let body = ''; req.on('data', (c: Buffer) => { body += c; });
-            req.on('end', () => { try { const t = JSON.parse(body); fs.mkdirSync(path.dirname(libraryFile), { recursive: true }); fs.writeFileSync(libraryFile, JSON.stringify(t, null, 1)); res.end('{"ok":true}'); } catch (e) { res.statusCode = 400; res.end(String((e as Error).message)); } });
+            req.on('end', () => { try { const t = JSON.parse(body); if (!Array.isArray(t)) throw new Error('library must be an array'); writeToolLibrary(libraryFile, t); res.end('{"ok":true}'); } catch (e) { res.statusCode = 400; res.end(String((e as Error).message)); } });
             return;
           }
           res.setHeader('content-type', 'application/json');
-          res.end(fs.existsSync(libraryFile) ? fs.readFileSync(libraryFile) : '[]'); return;
+          res.end(JSON.stringify(readToolLibrary(libraryFile))); return;
         }
         if (url === '/api/jobs' || url === '/api/jobs/') {
           const files = fs.readdirSync(jobsDir).filter(f => f.endsWith('.json')).map(f => ({ name: f, mtime: fs.statSync(path.join(jobsDir, f)).mtimeMs })).sort((a, b) => b.mtime - a.mtime);

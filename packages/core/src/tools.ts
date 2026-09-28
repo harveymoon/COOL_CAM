@@ -15,10 +15,18 @@ export interface Tool {
   tipAngle?: number;
   /** Neck/shank diameter above the head (keyhole cutters). */
   shankDiameter?: number;
+  /** Overall length below the collet, mm (stick-out). Informational for now. */
+  overallLength?: number;
   /** Default spindle speed, feed and plunge (rpm, mm/min). Ops can override. */
   rpm?: number;
   feed?: number;
   plunge?: number;
+  /** Vendor part number, e.g. "Carbide 3D #201" or "Amana 46170". */
+  sku?: string;
+  /** Optional picture (URL or data URI) shown in the library grid instead of the rendered cutter. */
+  image?: string;
+  /** Optional body colour for the rendered cutter (CSS colour); default is guessed from the coating named in name/notes/sku. */
+  color?: string;
   notes?: string;
 }
 

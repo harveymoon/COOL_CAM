@@ -8,15 +8,19 @@ import {
   newJob, parseDxf, parseSvg, bbox, uid, generateToolpaths, estimate, formatDuration, feedsAndSpeeds, MATERIALS, MACHINES, SHAPEOKO_HDM,
   rect, circleShape, polygon, regularPolygon, slot, signedArea, perimeter, stockBounds, getTool,
   parseStl, parseObj, meshBBox, placedMesh, placementFor, IDENTITY_PLACEMENT, getModel, proposeOperations,
-  loadFont, textToPolylines, heightmapToMesh, decodeImage,
+  loadFont, textToPolylines, heightmapToMesh, decodeImage, translateParams,
 } from '@cool-cam/core';
 import type { Job, Op, Tool, Shape, Polyline, MaterialId, Model } from '@cool-cam/core';
 import { postGrbl, summarizePost } from '@cool-cam/post';
 import { simulate } from '@cool-cam/sim';
 import { JobState } from './state.js';
+import { resolveToolLibrary, readToolLibrary, writeToolLibrary } from '@cool-cam/core/node';
 
 const jobsDir = process.env.COOL_CAM_JOBS_DIR ?? path.resolve(process.cwd(), 'jobs');
-const libraryFile = process.env.COOL_CAM_LIBRARY ?? path.resolve(jobsDir, '..', 'library', 'tools.json');
+// the repo's library/tools.json is the bundled default; the user's own library lives in their application-data folder
+const bundledLibrary = path.resolve(jobsDir, '..', 'library', 'tools.json');
+const library = resolveToolLibrary({ bundled: bundledLibrary });
+const libraryFile = library.file;
 const FONT_DIRS = ['/System/Library/Fonts/Supplemental', '/System/Library/Fonts', '/Library/Fonts', path.join(process.env.HOME ?? '', 'Library/Fonts'), path.resolve(jobsDir, '..', 'library', 'fonts')];
 function listFonts(): { name: string; file: string }[] {
   const out: { name: string; file: string }[] = [];
@@ -29,8 +33,8 @@ function fontFile(name: string): string {
   if (!hit) throw new Error(`Font '${name}' not found. Use list_fonts.`);
   return hit.file;
 }
-function readLibrary(): Tool[] { try { const t = JSON.parse(fs.readFileSync(libraryFile, 'utf8')); return Array.isArray(t) && t.length ? t : []; } catch { return []; } }
-function writeLibrary(tools: Tool[]) { fs.mkdirSync(path.dirname(libraryFile), { recursive: true }); fs.writeFileSync(libraryFile, JSON.stringify(tools, null, 1)); }
+function readLibrary(): Tool[] { return readToolLibrary<Tool>(libraryFile); }
+function writeLibrary(tools: Tool[]) { writeToolLibrary(libraryFile, tools); }
 const state = new JobState(jobsDir);
 
 const server = new McpServer({ name: 'cool-cam', version: '0.1.0' }, {
@@ -82,13 +86,13 @@ server.registerTool('new_job', {
   description: 'Start a new CAM job with a stock block. Loads the default Carbide 3D tool library (#201, #202, #102, #101, #112, #302, #301).',
   inputSchema: { name: z.string(), stock: stockSchema, material: z.enum(Object.keys(MATERIALS) as [MaterialId, ...MaterialId[]]).optional(), safeZ: z.number().optional().describe('Rapid height above Z0 between operations (default 10)'), clearanceZ: z.number().optional().describe('Retract height above Z0 within an operation (default 3)') },
 }, guarded(({ name, stock, material, safeZ, clearanceZ }) => {
-  state.job = newJob(name, stock); state.invalidate();
-  const lib = readLibrary(); if (lib.length) state.job.tools = lib.map(t => ({ ...t }));
-  if (material) state.job.material = material;
-  if (safeZ !== undefined) state.job.safeZ = safeZ;
-  if (clearanceZ !== undefined) state.job.clearanceZ = clearanceZ;
+  const job = state.set(newJob(name, stock));
+  const lib = readLibrary(); if (lib.length) job.tools = lib.map(t => ({ ...t }));
+  if (material) job.material = material;
+  if (safeZ !== undefined) job.safeZ = safeZ;
+  if (clearanceZ !== undefined) job.clearanceZ = clearanceZ;
   state.save();
-  return jobSummary(state.job);
+  return jobSummary(job);
 }));
 
 server.registerTool('load_job', { title: 'Load job', description: 'Load a saved job by name or path. Omit the name to list saved jobs.', inputSchema: { name: z.string().optional() } },
@@ -191,7 +195,10 @@ server.registerTool('add_text', {
   const group = id ?? uid('text');
   const params = { kind: 'text' as const, text: txt, font: path.basename(file).replace(/\.(ttf|otf)$/i, ''), size, x, y, align: align ?? 'left', spacing };
   const shapes: Shape[] = loops.map((pl, i) => ({ id: `${group}_${i + 1}`, name: `${txt} ${i + 1}`, polyline: pl, params, group }));
+  const oldIds = job.shapes.filter(s => s.group === group).map(s => s.id);
   job.shapes = [...job.shapes.filter(s => s.group !== group), ...shapes];
+  // ops that used the old loops of this group now use the new ones (a re-outlined string may have a different loop count)
+  if (oldIds.length) for (const op of job.ops) if (op.shapeIds.some(x => oldIds.includes(x))) op.shapeIds = [...op.shapeIds.filter(x => !oldIds.includes(x)), ...shapes.map(x => x.id)];
   state.invalidate(); state.save();
   return { group, shapes: shapes.map(shapeSummary), bbox: bbox(loops), hint: 'For carved lettering: add_operation type vcarve with a V-bit (t301/t302) and these shapeIds.' };
 }));
@@ -261,10 +268,15 @@ server.registerTool('transform_shapes', {
   if (moveMinTo) { tx += moveMinTo.x - b0.minX; ty += moveMinTo.y - b0.minY; }
   const c = aboutCenter === false ? { x: 0, y: 0 } : { x: (b0.minX + b0.maxX) / 2, y: (b0.minY + b0.maxY) / 2 };
   const th = ((rotateDeg ?? 0) * Math.PI) / 180, cs = Math.cos(th), sn = Math.sin(th), k = scale ?? 1;
-  for (const s of targets) s.polyline = { closed: s.polyline.closed, points: s.polyline.points.map(p => {
-    const x = (p.x - c.x) * k, y = (p.y - c.y) * k;
-    return { x: c.x + x * cs - y * sn + tx, y: c.y + x * sn + y * cs + ty };
-  }) };
+  const pureMove = k === 1 && th === 0;
+  for (const s of targets) {
+    s.polyline = { closed: s.polyline.closed, points: s.polyline.points.map(p => {
+      const x = (p.x - c.x) * k, y = (p.y - c.y) * k;
+      return { x: c.x + x * cs - y * sn + tx, y: c.y + x * sn + y * cs + ty };
+    }) };
+    // primitive parameters survive a pure translation; anything else makes them stale, so drop them
+    if (s.params) { if (pureMove) s.params = translateParams(s.params, tx, ty); else delete s.params; }
+  }
   state.invalidate(); state.save();
   return { transformed: targets.length, bbox: bbox(targets.map(s => s.polyline)) };
 }));
@@ -274,13 +286,20 @@ server.registerTool('remove_shapes', { title: 'Remove shapes', description: 'Del
 
 const toolSchema = z.object({
   id: z.string(), number: z.number().int(), name: z.string(), type: z.enum(['endmill', 'ballnose', 'vbit', 'drill', 'keyhole']), diameter: z.number().positive(), flutes: z.number().int().positive(),
-  fluteLength: z.number().optional(), tipAngle: z.number().optional(), shankDiameter: z.number().optional(), rpm: z.number().optional(), feed: z.number().optional(), plunge: z.number().optional(), notes: z.string().optional(),
+  fluteLength: z.number().optional(), tipAngle: z.number().optional(), shankDiameter: z.number().optional(), overallLength: z.number().optional(), rpm: z.number().optional(), feed: z.number().optional(), plunge: z.number().optional(), sku: z.string().optional(), image: z.string().optional().describe('picture URL or data URI for the library grid'), color: z.string().optional().describe('CSS colour for the rendered cutter body'), notes: z.string().optional(),
 });
 server.registerTool('add_tool', { title: 'Add/replace tool', description: 'Add a cutter to the job (replaces an existing id). With library=true it is also saved to the shared tool library used for new jobs and by the viewer.', inputSchema: { tool: toolSchema, library: z.boolean().optional() } },
   guarded(({ tool, library }) => { const job = state.require(); job.tools = job.tools.filter(t => t.id !== tool.id); job.tools.push(tool as Tool); job.tools.sort((a, b) => a.number - b.number); state.invalidate(); state.save(); if (library) { const lib = readLibrary().filter(t => t.id !== tool.id); lib.push(tool as Tool); lib.sort((a, b) => a.number - b.number); writeLibrary(lib); } return { tools: job.tools.map(t => t.id), library: library ? libraryFile : undefined }; }));
 
-server.registerTool('library_tools', { title: 'Tool library', description: 'List the shared tool library (library/tools.json). Use add_tool with library=true to add cutters; remove with removeId.', inputSchema: { removeId: z.string().optional() } },
-  guarded(({ removeId }) => { let lib = readLibrary(); if (removeId) { lib = lib.filter(t => t.id !== removeId); writeLibrary(lib); } return { file: libraryFile, tools: lib }; }));
+server.registerTool('library_tools', { title: 'Tool library', description: `List the user's tool library (${libraryFile}; bundled defaults in library/tools.json). Use add_tool with library=true to add cutters; removeId removes one, clear=true empties it, seedDefaults=true adds the bundled Carbide 3D set back.`, inputSchema: { removeId: z.string().optional(), clear: z.boolean().optional(), seedDefaults: z.boolean().optional() } },
+  guarded(({ removeId, clear, seedDefaults }) => {
+    let lib = readLibrary(); let changed = false;
+    if (clear) { lib = []; changed = true; }
+    if (removeId) { lib = lib.filter(t => t.id !== removeId); changed = true; }
+    if (seedDefaults) { const def = readToolLibrary<Tool>(bundledLibrary); for (const t of def) if (!lib.some(x => x.id === t.id)) lib.push(t); lib.sort((a, b) => a.number - b.number); changed = true; }
+    if (changed) writeLibrary(lib);
+    return { file: libraryFile, source: library.source, bundled: bundledLibrary, tools: lib };
+  }));
 
 server.registerTool('feeds_and_speeds', {
   title: 'Feeds and speeds',
@@ -320,8 +339,19 @@ server.registerTool('add_operation', {
   return { op: full, preview: { moves: st.moves, cutLength: r2(st.cutLength), minZ: st.minZ, estimated: formatDuration(st.seconds), warnings: tp.warnings } };
 }));
 
-server.registerTool('update_operation', { title: 'Update operation', description: 'Patch fields of an existing operation by id.', inputSchema: { id: z.string(), patch: z.record(z.unknown()) } },
-  guarded(({ id, patch }) => { const job = state.require(); const op = job.ops.find(o => o.id === id); if (!op) throw new Error(`Unknown op ${id}`); Object.assign(op, patch); state.invalidate(); state.save(); return op; }));
+server.registerTool('update_operation', { title: 'Update operation', description: 'Patch fields of an existing operation by id. The patched operation is validated like add_operation (type cannot change).', inputSchema: { id: z.string(), patch: z.record(z.unknown()) } },
+  guarded(({ id, patch }) => {
+    const job = state.require(); const op = job.ops.find(o => o.id === id); if (!op) throw new Error(`Unknown op ${id}`);
+    if ('type' in patch && patch.type !== op.type) throw new Error(`Cannot change op type (${op.type} → ${String(patch.type)}); remove and re-add it.`);
+    if ('id' in patch && patch.id !== op.id) throw new Error('Cannot change an op id.');
+    const merged = { ...op, ...patch } as Record<string, unknown>;
+    const parsed = opSchema.safeParse(merged);
+    if (!parsed.success) throw new Error(`Invalid patch: ${parsed.error.issues.map(i => `${i.path.join('.') || 'op'}: ${i.message}`).join('; ')}`);
+    getTool(job, parsed.data.toolId);
+    for (const sid of parsed.data.shapeIds ?? []) if (!job.shapes.some(s => s.id === sid)) throw new Error(`Unknown shape ${sid}`);
+    if ('modelId' in parsed.data) getModel(job, parsed.data.modelId);
+    Object.assign(op, patch); state.invalidate(); state.save(); return op;
+  }));
 
 server.registerTool('remove_operation', { title: 'Remove operation', description: 'Delete an operation by id.', inputSchema: { id: z.string() } },
   guarded(({ id }) => { const job = state.require(); const n = job.ops.length; job.ops = job.ops.filter(o => o.id !== id); if (job.ops.length === n) throw new Error(`Unknown op ${id}`); state.invalidate(); state.save(); return { ops: job.ops.map(o => o.id) }; }));
@@ -354,14 +384,19 @@ server.registerTool('simulate', { title: 'Simulate', description: 'Run the mater
 server.registerTool('export_gcode', {
   title: 'Export G-code',
   description: 'Post-process all toolpaths to GRBL G-code for Carbide Motion (M6 tool changes with BitSetter) and write it to a file. Returns a summary and the first lines.',
-  inputSchema: { path: z.string().optional().describe('Output .nc path (default jobs/<name>.nc)'), toolChange: z.enum(['m6-prompt', 'm0-pause', 'none']).optional().describe('m6-prompt for Carbide Motion; m0-pause for gSender/CNCjs'), parkAtOrigin: z.boolean().optional(), arcs: z.boolean().optional().describe('emit G2/G3 arcs (default true)') },
-}, guarded(({ path: out, toolChange, parkAtOrigin, arcs }) => {
+  inputSchema: { path: z.string().optional().describe('Output .nc path (default jobs/<name>.nc)'), toolChange: z.enum(['m6-prompt', 'm0-pause', 'none']).optional().describe('m6-prompt for Carbide Motion; m0-pause for gSender/CNCjs'), parkAtOrigin: z.boolean().optional(), arcs: z.boolean().optional().describe('emit G2/G3 arcs (default true)'), force: z.boolean().optional().describe('write the file even though the simulation reports errors (rapids through stock, cuts below the stock, cuts meeting far more material than planned)') },
+}, guarded(({ path: out, toolChange, parkAtOrigin, arcs, force }) => {
   const job = state.require(); const tps = ensureToolpaths();
-  const r = postGrbl(job, tps, { toolChange, parkAtOrigin, arcs });
+  // The simulation is the last line of defence against a planner bug reaching the machine: no G-code while it reports errors.
+  const sim = simulate(job, tps);
+  const errors = sim.events.filter(e => e.severity === 'error');
+  if (errors.length && !force) throw new Error(`Not exported: the simulation reports ${errors.length} error(s). Fix the job (or pass force=true to export anyway):\n${errors.slice(0, 10).map(e => `- ${e.opId} move ${e.moveIndex}: ${e.message} @${e.x.toFixed(1)},${e.y.toFixed(1)},${e.z.toFixed(2)}`).join('\n')}`);
+  const r = postGrbl(job, tps, { toolChange, parkAtOrigin, arcs, headerNotes: [errors.length ? `Simulation: ${errors.length} error(s), exported with force` : `Simulation: clean, ${sim.events.length} note(s)`] });
+  if (!r.gcode) throw new Error(r.warnings.join(' '));
   const file = out ?? path.join(jobsDir, `${state.slug()}.nc`);
   fs.writeFileSync(file, r.gcode);
-  const allWarnings = [...r.warnings, ...tps.flatMap(t => t.warnings.map(w => `${t.opName}: ${w}`))];
-  return { file, summary: summarizePost(r), warnings: allWarnings, head: r.gcode.split('\n').slice(0, 30).join('\n') };
+  const allWarnings = [...r.warnings, ...tps.flatMap(t => t.warnings.map(w => `${t.opName}: ${w}`)), ...sim.events.filter(e => e.severity === 'warning').map(e => `${e.opId}: ${e.message}`)];
+  return { file, summary: summarizePost(r), simulation: errors.length ? `${errors.length} error(s), exported with force` : 'clean', warnings: allWarnings, head: r.gcode.split('\n').slice(0, 30).join('\n') };
 }));
 
 server.registerTool('machine_info', { title: 'Machine info', description: 'Machine profile (travel, feeds, spindle) and the list of materials known to the feeds calculator.', inputSchema: {} },

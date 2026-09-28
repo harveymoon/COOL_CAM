@@ -1999,6 +1999,22 @@
    "enabled": false
   },
   {
+   "id": "star_coaster_70mm_12mm_finish",
+   "name": "3D finish (#101 1/8\" ballnose)",
+   "type": "finish3d",
+   "toolId": "t101",
+   "modelId": "star_coaster_70mm_12mm",
+   "shapeIds": [
+    "engrave_boundary"
+   ],
+   "depth": 12.01,
+   "stepover": 0.32,
+   "axis": "x",
+   "boundary": 0,
+   "enabled": true,
+   "boundaryMode": "shapes"
+  },
+  {
    "id": "profile_han04",
    "toolId": "t201",
    "shapeIds": [
@@ -2014,22 +2030,6 @@
     "height": 2
    },
    "enabled": true
-  },
-  {
-   "id": "star_coaster_70mm_12mm_finish",
-   "name": "3D finish (#101 1/8\" ballnose)",
-   "type": "finish3d",
-   "toolId": "t101",
-   "modelId": "star_coaster_70mm_12mm",
-   "shapeIds": [
-    "engrave_boundary"
-   ],
-   "depth": 12.01,
-   "stepover": 0.32,
-   "axis": "x",
-   "boundary": 0,
-   "enabled": true,
-   "boundaryMode": "shapes"
   }
  ],
  "models": [
@@ -6531,7 +6531,7 @@
    }
   }
  ],
- "material": "aluminum",
- "_rev": "yo5040nqnas",
- "_savedAt": "2026-09-27T18:17:54.643Z"
+ "material": "hardwood",
+ "_rev": "uqsfwo59yco",
+ "_savedAt": "2026-09-28T01:28:02.667Z"
 }

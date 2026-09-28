@@ -2,7 +2,7 @@ import type { Job } from '../job.js';
 import { getShapes, getTool } from '../job.js';
 import type { ProfileOp } from '../ops.js';
 import type { Toolpath } from '../toolpath.js';
-import { type Polyline, isCCW, nearestOnPolyline, perimeter, pointAtLength, reversed, setOrientation, signedArea, simplify } from '../geometry/polyline.js';
+import { type Polyline, isCCW, nearestOnPolyline, perimeter, pointAtLength, reversed, setOrientation, signedArea, simplify, walkLoop } from '../geometry/polyline.js';
 import type { Tabs } from '../ops.js';
 import { normalize, offsetPolygons } from '../geometry/offset.js';
 import { dist } from '../geometry/vec.js';
@@ -127,9 +127,25 @@ export function generateProfile(job: Job, op: ProfileOp): Toolpath {
     for (let pi = 0; pi < ctx.passes.length; pi++) {
       const z = ctx.passes[pi];
       const p0 = loop.points[0];
+      const tabbed = !!tabs && z < tabZ - 1e-6;
+      const rampLen = (prevZ - z) / Math.tan(((op.rampAngle ?? 5) * Math.PI) / 180);
+      const rampOk = op.entry === 'ramp' && rampLen > 0.1 && (!tabbed || !ivals.some(iv => iv.s0 < rampLen + 0.5)); // never ramp through a tab
+      if (rampOk) {
+        // ramp along the contour from p0, then cut the whole loop from where the ramp ended
+        if (pi === 0) { ml.retract(); ml.rapid(p0.x, p0.y, ctx.clearanceZ); ml.rapid(p0.x, p0.y, prevZ + 0.5); }
+        const startZ = pi === 0 ? prevZ + 0.5 : prevZ; const L = Math.min(rampLen, perimeter(loop));
+        const walk = walkLoop(loop, 0, L);
+        for (const w of walk.slice(1)) ml.ramp(w.point.x, w.point.y, startZ - (startZ - z) * Math.min(1, (w.s) / L));
+        const end = walk[walk.length - 1]?.point ?? p0;
+        const loop2 = rotateToNearest(loop, end);
+        ml.cut(loop2.points[0].x, loop2.points[0].y, z);
+        if (tabbed) followWithTabs(ml, loop2, z, tabZ, tabs ? tabIntervals(loop2, tabs, ctx.tool.diameter) : [], ctx.feed, ctx.plunge);
+        else followPath(ml, loop2, z);
+        prevZ = z; continue;
+      }
       if (pi === 0) ml.moveTo(p0.x, p0.y, z, ctx.stockTop + 0.5);
       else ml.plunge(p0.x, p0.y, z);
-      if (tabs && z < tabZ - 1e-6) followWithTabs(ml, loop, z, tabZ, ivals, ctx.feed, ctx.plunge);
+      if (tabbed) followWithTabs(ml, loop, z, tabZ, ivals, ctx.feed, ctx.plunge);
       else followPath(ml, loop, z);
       prevZ = z;
     }

@@ -1,9 +1,9 @@
 import type { Job } from '../job.js';
-import { getShapes } from '../job.js';
+import { getShapes, getTool } from '../job.js';
 import type { PocketOp } from '../ops.js';
 import type { Toolpath } from '../toolpath.js';
 import { type Polyline, setOrientation, signedArea, simplify, pointInPolygon } from '../geometry/polyline.js';
-import { normalize, offsetPolygons } from '../geometry/offset.js';
+import { normalize, offsetPolygons, difference, intersection } from '../geometry/offset.js';
 import type { Vec2 } from '../geometry/vec.js';
 import { dist } from '../geometry/vec.js';
 import { MoveList, followPath, helixEntry, insideRegion, makeContext, orderByNearest, rotateToNearest, segmentInside } from './common.js';
@@ -24,8 +24,19 @@ export function generatePocket(job: Job, op: PocketOp): Toolpath {
   if (region.length === 0) { ctx.warnings.push('Pocket needs at least one closed shape.'); return empty(op, ctx); }
 
   // Tool-centre allowed region and the ring family.
-  const allowed = offsetPolygons(region, -(r + stl));
+  let allowed = offsetPolygons(region, -(r + stl));
   if (allowed.length === 0) { ctx.warnings.push(`No toolpath: ${tool.diameter} mm tool does not fit in the pocket.`); return empty(op, ctx); }
+  if (op.restToolId) {
+    // rest machining: keep only what the earlier tool left behind (its reach = region eroded then dilated by its radius)
+    const prev = getTool(job, op.restToolId); const R = prev.diameter / 2 + stl;
+    if (prev.diameter <= tool.diameter) ctx.warnings.push(`Rest machining: previous tool ${prev.name} is not larger than ${tool.name}; nothing is left to cut.`);
+    const reached = offsetPolygons(offsetPolygons(region, -R).filter(l => Math.abs(signedArea(l)) > 0.5), R + 0.02);
+    const leftover = difference(region, reached).filter(l => Math.abs(signedArea(l)) > 0.2);
+    if (!leftover.length) { ctx.warnings.push('Rest machining: the previous tool already reached everything.'); return empty(op, ctx); }
+    // tool-centre region for the leftover: within the pocket's allowed area and within a tool diameter of the leftover
+    allowed = intersection(allowed, offsetPolygons(leftover, tool.diameter));
+    if (!allowed.length) { ctx.warnings.push(`Rest machining: ${tool.name} cannot reach the leftover areas either.`); return empty(op, ctx); }
+  }
   const rings = ringsFor(allowed, stepover, climb);
 
   const finishLoops = op.finishPass && stl > 0 ? offsetPolygons(region, -r).map(l => setOrientation(simplify(l), signedArea(l) > 0 ? climb : !climb)) : [];

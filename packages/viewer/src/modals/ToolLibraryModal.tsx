@@ -36,7 +36,7 @@ export function ToolLibraryModal() {
           <div className="grid3">
             <Text label="id" value={draft.id} onChange={v => d({ id: v.replace(/\s+/g, '_') })} hint="unique key, e.g. t201" />
             <Num label="T number" value={draft.number} step={1} onChange={v => d({ number: v ?? 0 })} />
-            <Sel label="type" value={draft.type} options={[{ value: 'endmill', label: 'endmill' }, { value: 'ballnose', label: 'ballnose' }, { value: 'vbit', label: 'V-bit' }, { value: 'drill', label: 'drill' }] as { value: Tool['type']; label: string }[]} onChange={v => d({ type: v })} />
+            <Sel label="type" value={draft.type} options={[{ value: 'endmill', label: 'endmill' }, { value: 'ballnose', label: 'ballnose' }, { value: 'vbit', label: 'V-bit' }, { value: 'drill', label: 'drill' }, { value: 'keyhole', label: 'keyhole' }] as { value: Tool['type']; label: string }[]} onChange={v => d({ type: v })} />
           </div>
           <Text label="name" value={draft.name} onChange={v => d({ name: v })} />
           <div className="grid4">
@@ -45,6 +45,7 @@ export function ToolLibraryModal() {
             <Num label="flute len" value={draft.fluteLength} step={0.5} onChange={v => d({ fluteLength: v })} />
             <Num label="tip angle" value={draft.tipAngle} step={1} hint="V-bits and drills" onChange={v => d({ tipAngle: v })} />
           </div>
+          {draft.type === 'keyhole' && <Num label="shank Ø" value={draft.shankDiameter} step={0.1} hint="neck diameter above the keyhole head" onChange={v => d({ shankDiameter: v })} />}
           <div className="grid3">
             <Num label="rpm" value={draft.rpm} step={500} onChange={v => d({ rpm: v })} />
             <Num label="feed" value={draft.feed} step={50} onChange={v => d({ feed: v })} />

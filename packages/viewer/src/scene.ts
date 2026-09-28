@@ -12,7 +12,8 @@ const KIND_COLORS: Record<string, THREE.Color> = {
 const DIM = new THREE.Color('#2b3340');
 const FOV = 40;
 const CUBE_PX = 220;
-const TEX_REPEAT_MM = 120;
+const TEX_REPEAT_X = 240; // mm covered by one tile along the grain (canvas is 2:1)
+const TEX_REPEAT_Y = 120;
 
 interface Flat { x: number; y: number; z: number; kind: string; opId: string }
 interface Anim { t0: number; dur: number; fromDir: THREE.Vector3; q: THREE.Quaternion; fromUp: THREE.Vector3; toUp: THREE.Vector3; dist: number; toOrtho: boolean }
@@ -40,33 +41,34 @@ function rng(seed: number) { let s = seed >>> 0; return () => { s = (s * 1664525
 
 /** Procedural surface texture for the stock, keyed by job material. */
 function stockTexture(material: string | undefined): THREE.CanvasTexture {
-  const size = 512; const c = document.createElement('canvas'); c.width = size; c.height = size; const g = c.getContext('2d')!;
+  const size = 512; const W = size * 2; const c = document.createElement('canvas'); c.width = W; c.height = size; const g = c.getContext('2d')!;
   const r = rng(7);
   const kind = material ?? 'none';
   const wood = ['softwood', 'hardwood', 'plywood'].includes(kind);
   const base: Record<string, string> = { softwood: '#d9b98a', hardwood: '#b8875a', plywood: '#d8b784', mdf: '#b79a72', acrylic: '#c7d5df', hdpe: '#dfe3e6', aluminum: '#b9bec4', brass: '#c9a84c', foam: '#c9d6ee', none: '#9aa1aa' };
-  g.fillStyle = base[kind] ?? base.none; g.fillRect(0, 0, size, size);
+  g.fillStyle = base[kind] ?? base.none; g.fillRect(0, 0, W, size);
   // everything below is drawn periodically so the tile repeats without a seam
-  const wrapRect = (x: number, y: number, w: number, h: number, style: string) => { g.fillStyle = style; for (const dx of [-size, 0, size]) for (const dy of [-size, 0, size]) g.fillRect(x + dx, y + dy, w, h); };
+  const wrapRect = (x: number, y: number, w: number, h: number, style: string) => { g.fillStyle = style; for (const dx of [-W, 0, W]) for (const dy of [-size, 0, size]) g.fillRect(x + dx, y + dy, w, h); };
   if (wood) {
-    // grain: wavy horizontal bands; frequencies are whole cycles per tile so both ends of a band meet
-    for (let i = 0; i < 90; i++) {
-      const y = r() * size; const amp = 4 + r() * 10; const cycles = 1 + Math.floor(r() * 4); const freq = (2 * Math.PI * cycles) / size; const cycles2 = cycles * 3; const width = 1 + r() * 3; const alpha = 0.05 + r() * 0.16; const phase = r() * Math.PI * 2;
-      g.strokeStyle = `rgba(70,40,15,${alpha})`; g.lineWidth = width;
+    // grain: long, nearly straight bands with a slow drift (one cycle per tile so the ends meet) and a faint fine ripple
+    const band = (y: number, amp: number, width: number, alpha: number, phase: number) => {
+      const freq = (2 * Math.PI) / W; g.strokeStyle = `rgba(70,40,15,${alpha})`; g.lineWidth = width;
       for (const dy of [-size, 0, size]) {
         g.beginPath();
-        for (let x = 0; x <= size; x += 4) { const yy = y + dy + Math.sin(x * freq + phase) * amp + Math.sin((x * freq * cycles2) / cycles + phase * 2) * amp * 0.3; if (x === 0) g.moveTo(x, yy); else g.lineTo(x, yy); }
+        for (let x = 0; x <= W; x += 8) { const yy = y + dy + Math.sin(x * freq + phase) * amp + Math.sin(x * freq * 7 + phase * 3) * amp * 0.15; if (x === 0) g.moveTo(x, yy); else g.lineTo(x, yy); }
         g.stroke();
       }
-    }
-    for (let i = 0; i < 6000; i++) wrapRect(r() * size, r() * size, 1 + r() * 2, 1, `rgba(0,0,0,${0.02 + r() * 0.05})`);
+    };
+    for (let i = 0; i < 140; i++) band(r() * size, 0.8 + r() * 2.2, 0.6 + r() * 1.2, 0.04 + r() * 0.09, r() * Math.PI * 2);   // earlywood: fine lines
+    for (let i = 0; i < 26; i++) band(r() * size, 1.5 + r() * 3, 3 + r() * 4, 0.05 + r() * 0.07, r() * Math.PI * 2);        // latewood: wider soft bands
+    for (let i = 0; i < 5000; i++) wrapRect(r() * W, r() * size, 2 + r() * 6, 1, `rgba(0,0,0,${0.015 + r() * 0.04})`);      // pores along the grain
   } else if (kind === 'aluminum' || kind === 'brass') {
     // brushed: neutral light/dark streaks only
-    for (let i = 0; i < 2400; i++) { const y = r() * size; const dark = r() > 0.5; g.strokeStyle = `rgba(${dark ? 0 : 255},${dark ? 0 : 255},${dark ? 0 : 255},${0.02 + r() * 0.05})`; g.lineWidth = 1; for (const dy of [-size, 0, size]) { g.beginPath(); g.moveTo(0, y + dy); g.lineTo(size, y + dy); g.stroke(); } }
+    for (let i = 0; i < 2400; i++) { const y = r() * size; const dark = r() > 0.5; g.strokeStyle = `rgba(${dark ? 0 : 255},${dark ? 0 : 255},${dark ? 0 : 255},${0.02 + r() * 0.05})`; g.lineWidth = 1; for (const dy of [-size, 0, size]) { g.beginPath(); g.moveTo(0, y + dy); g.lineTo(W, y + dy); g.stroke(); } }
   } else if (kind === 'mdf') {
-    for (let i = 0; i < 20000; i++) { const dark = r() > 0.5; wrapRect(r() * size, r() * size, 1.5, 1.5, `rgba(${dark ? 40 : 255},${dark ? 30 : 240},${dark ? 20 : 220},${0.03 + r() * 0.06})`); }
+    for (let i = 0; i < 40000; i++) { const dark = r() > 0.5; wrapRect(r() * W, r() * size, 1.5, 1.5, `rgba(${dark ? 40 : 255},${dark ? 30 : 240},${dark ? 20 : 220},${0.03 + r() * 0.06})`); }
   } else {
-    for (let i = 0; i < 9000; i++) { const dark = r() > 0.5; wrapRect(r() * size, r() * size, 2, 2, `rgba(${dark ? 0 : 255},${dark ? 0 : 255},${dark ? 0 : 255},${0.02 + r() * 0.04})`); }
+    for (let i = 0; i < 18000; i++) { const dark = r() > 0.5; wrapRect(r() * W, r() * size, 2, 2, `rgba(${dark ? 0 : 255},${dark ? 0 : 255},${dark ? 0 : 255},${0.02 + r() * 0.04})`); }
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
   return t;
@@ -171,7 +173,7 @@ export class SceneController {
 
     this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(el);
     const dom = this.renderer.domElement;
-    dom.addEventListener('mousedown', this.onDown); dom.addEventListener('click', this.onClick); dom.addEventListener('mousemove', this.onMove); dom.addEventListener('mouseleave', () => { this.mouse.x = -1; });
+    dom.addEventListener('pointerdown', this.onDown); dom.addEventListener('pointerup', this.onClick); dom.addEventListener('pointermove', this.onMove); dom.addEventListener('pointerleave', () => { this.mouse.x = -1; });
     window.addEventListener('keydown', this.onKey); window.addEventListener('keyup', this.onKey);
     this.loop(0);
   }
@@ -222,14 +224,15 @@ export class SceneController {
   };
 
   // ---------- picking ----------
-  private onDown = (e: MouseEvent) => { this.down = [e.clientX, e.clientY]; };
-  private onMove = (e: MouseEvent) => {
+  private onDown = (e: PointerEvent) => { if (e.button === 0) this.down = [e.clientX, e.clientY]; };
+  private onMove = (e: PointerEvent) => {
     const r = this.renderer.domElement.getBoundingClientRect();
     this.mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
     if (this.cubeVisible) this.updateCubeHover();
   };
-  private onClick = (e: MouseEvent) => {
-    const moved = this.down ? Math.hypot(e.clientX - this.down[0], e.clientY - this.down[1]) : 0; this.down = null;
+  private onClick = (e: PointerEvent) => {
+    if (!this.down) return; // no matching press on the canvas (e.g. a drag that started on the gizmo)
+    const moved = Math.hypot(e.clientX - this.down[0], e.clientY - this.down[1]); this.down = null;
     if (moved > 4 || e.button !== 0) return;
     if (this.tc.axis || this.tc.dragging) return; // click landed on the gizmo
     if (this.cubeVisible) {
@@ -537,7 +540,7 @@ export class SceneController {
     const positions = new Float32Array(w * h * 3), colors = new Float32Array(w * h * 3), uvs = new Float32Array(w * h * 2);
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       const k = j * w + i; positions[k * 3] = x0 + i * res; positions[k * 3 + 1] = y0 + j * res; positions[k * 3 + 2] = info.top;
-      uvs[k * 2] = (i * res) / TEX_REPEAT_MM; uvs[k * 2 + 1] = (j * res) / TEX_REPEAT_MM;
+      uvs[k * 2] = (i * res) / TEX_REPEAT_X; uvs[k * 2 + 1] = (j * res) / TEX_REPEAT_Y;
       colors[k * 3] = colors[k * 3 + 1] = colors[k * 3 + 2] = 1;
     }
     const idx = new Uint32Array((w - 1) * (h - 1) * 6); let k = 0;
@@ -564,7 +567,7 @@ export class SceneController {
       const vi = perim[k]; const x = positions[vi * 3], y = positions[vi * 3 + 1];
       if (k > 0) { const pv = perim[k - 1]; along += Math.hypot(x - positions[pv * 3], y - positions[pv * 3 + 1]); }
       sp[k * 6] = x; sp[k * 6 + 1] = y; sp[k * 6 + 2] = info.top; sp[k * 6 + 3] = x; sp[k * 6 + 4] = y; sp[k * 6 + 5] = info.bottom;
-      suv[k * 4] = along / TEX_REPEAT_MM; suv[k * 4 + 1] = info.top / TEX_REPEAT_MM; suv[k * 4 + 2] = along / TEX_REPEAT_MM; suv[k * 4 + 3] = info.bottom / TEX_REPEAT_MM;
+      suv[k * 4] = along / TEX_REPEAT_X; suv[k * 4 + 1] = info.top / TEX_REPEAT_Y; suv[k * 4 + 2] = along / TEX_REPEAT_X; suv[k * 4 + 3] = info.bottom / TEX_REPEAT_Y;
       const a = k * 2, b = ((k + 1) % N) * 2; sidx.push(a, b, b + 1, a, b + 1, a + 1);
     }
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3)); sg.setAttribute('uv', new THREE.BufferAttribute(suv, 2)); sg.setIndex(sidx); sg.computeVertexNormals();

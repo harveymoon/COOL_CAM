@@ -206,3 +206,17 @@ export function pointAtLength(poly: Polyline, s: number): { point: Vec2; angle: 
   }
   return { point: pts[0], angle: 0 };
 }
+
+/** Points along a closed loop from arc length `s0` for `length` mm, sampled at every vertex plus the end (wraps). */
+export function walkLoop(loop: Polyline, s0: number, length: number): { point: Vec2; s: number }[] {
+  const L = perimeter(loop); const out: { point: Vec2; s: number }[] = [];
+  if (L <= 0) return out;
+  const n = loop.points.length; let acc = 0; let started = false; let travelled = 0;
+  for (let k = 0; k < 2 * n && travelled < length; k++) {
+    const a = loop.points[k % n], b = loop.points[(k + 1) % n]; const d = dist(a, b);
+    if (!started) { if (acc + d >= s0) { started = true; const t = d === 0 ? 0 : (s0 - acc) / d; out.push({ point: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, s: s0 }); travelled = 0; const rest = d * (1 - t); if (rest >= length) { const tt = t + length / d; out.push({ point: { x: a.x + (b.x - a.x) * tt, y: a.y + (b.y - a.y) * tt }, s: s0 + length }); return out; } out.push({ point: b, s: s0 + rest }); travelled = rest; } acc += d; continue; }
+    if (travelled + d >= length) { const t = (length - travelled) / d; out.push({ point: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, s: s0 + length }); return out; }
+    travelled += d; out.push({ point: b, s: s0 + travelled });
+  }
+  return out;
+}

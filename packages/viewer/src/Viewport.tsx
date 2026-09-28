@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { SceneController } from './scene';
 import { useUi } from './ui';
-import { profileTabCenters, getTool, boundaryFor } from '@cool-cam/core';
+import { profileTabCenters, getTool, boundaryFor, translateParams } from '@cool-cam/core';
 
 export function Viewport() {
   const ui = useUi();
@@ -21,7 +21,7 @@ export function Viewport() {
     sc.onCubeChange = v => { ui.setViewCube(v); setCube(v); };
     sc.onPlaceTab = (x, y) => uiRef.current.setJob(j => ({ ...j, ops: j.ops.map(o => o.id === uiRef.current.activeOp && o.type === 'profile' ? { ...o, tabs: { ...(o.tabs ?? { count: 0, width: 6, height: 2 }), mode: 'manual', points: [...(o.tabs?.points ?? []), { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }] } } : o) }));
     sc.onRemoveTab = idx => uiRef.current.setJob(j => ({ ...j, ops: j.ops.map(o => o.id === uiRef.current.activeOp && o.type === 'profile' && o.tabs ? { ...o, tabs: { ...o.tabs, points: (o.tabs.points ?? []).filter((_, k) => k !== idx) } } : o) }));
-    sc.onMoveShapes = (ids, dx, dy) => ui.setJob(j => ({ ...j, shapes: j.shapes.map(s => ids.includes(s.id) ? { ...s, polyline: { closed: s.polyline.closed, points: s.polyline.points.map(p => ({ x: Math.round((p.x + dx) * 1000) / 1000, y: Math.round((p.y + dy) * 1000) / 1000 })) } } : s) }));
+    sc.onMoveShapes = (ids, dx, dy) => uiRef.current.setJob(j => ({ ...j, shapes: j.shapes.map(s => ids.includes(s.id) ? { ...s, polyline: { closed: s.polyline.closed, points: s.polyline.points.map(p => ({ x: Math.round((p.x + dx) * 1000) / 1000, y: Math.round((p.y + dy) * 1000) / 1000 })) }, params: s.params ? translateParams(s.params, dx, dy) : undefined } : s) }));
     ui.setSceneReady(v => v + 1);
     return () => { sc.dispose(); if (ui.sceneRef.current === sc) ui.sceneRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -32,3 +32,24 @@ export function slot(x1: number, y1: number, x2: number, y2: number, width: numb
   void L;
   return { points: pts, closed: true };
 }
+
+import type { ShapeParams } from './job.js';
+/** Rebuild the polyline of a parametric (non-text) shape. Returns null for kinds this module cannot build. */
+export function polylineFromParams(p: ShapeParams): Polyline | null {
+  switch (p.kind) {
+    case 'rect': return rect(p.x, p.y, p.w, p.h, p.r);
+    case 'circle': return circleShape(p.cx, p.cy, p.d);
+    case 'regular_polygon': return regularPolygon(p.cx, p.cy, p.sides, p.d, p.rot);
+    case 'slot': return slot(p.x1, p.y1, p.x2, p.y2, p.w);
+    default: return null;
+  }
+}
+/** Translate a shape's parameters (used when moving parametric shapes). */
+export function translateParams(p: ShapeParams, dx: number, dy: number): ShapeParams {
+  switch (p.kind) {
+    case 'rect': return { ...p, x: p.x + dx, y: p.y + dy };
+    case 'circle': case 'regular_polygon': return { ...p, cx: p.cx + dx, cy: p.cy + dy };
+    case 'slot': return { ...p, x1: p.x1 + dx, y1: p.y1 + dy, x2: p.x2 + dx, y2: p.y2 + dy };
+    case 'text': return { ...p, x: p.x + dx, y: p.y + dy };
+  }
+}

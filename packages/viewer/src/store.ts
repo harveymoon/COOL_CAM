@@ -23,6 +23,8 @@ export function useJobStore() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const rev = useRef<string>('');
+  const past = useRef<Job[]>([]); const future = useRef<Job[]>([]);
+  const [histTick, setHistTick] = useState(0);
   const dirty = useRef(false);
   const saveTimer = useRef<number | null>(null);
 
@@ -37,7 +39,7 @@ export function useJobStore() {
       const raw = await r.json();
       if (raw._rev && raw._rev === rev.current) return; // our own save echoing back
       delete raw._rev; delete raw._savedAt;
-      setJobState(raw as Job); setError(null); dirty.current = false;
+      setJobState(raw as Job); setError(null); dirty.current = false; past.current = []; future.current = []; setHistTick(t => t + 1);
     } catch (e) { setError((e as Error).message); }
   }, []);
 
@@ -65,10 +67,15 @@ export function useJobStore() {
   const setJob = useCallback((up: JobUpdater | Job) => {
     setJobState(prev => {
       const next = typeof up === 'function' ? up(prev ?? newJob('Untitled')) : up;
+      if (next === prev) return prev;
+      if (prev) { past.current.push(prev); if (past.current.length > 60) past.current.shift(); future.current = []; }
       dirty.current = true; persist(next, file);
       return next;
     });
+    setHistTick(t => t + 1);
   }, [file, persist]);
+  const undo = useCallback(() => { setJobState(cur => { const prev = past.current.pop(); if (!prev) return cur; if (cur) future.current.push(cur); dirty.current = true; persist(prev, file); return prev; }); setHistTick(t => t + 1); }, [file, persist]);
+  const redo = useCallback(() => { setJobState(cur => { const nxt = future.current.pop(); if (!nxt) return cur; if (cur) past.current.push(cur); dirty.current = true; persist(nxt, file); return nxt; }); setHistTick(t => t + 1); }, [file, persist]);
 
   const createJob = useCallback((j: Job) => { setFile('current.json'); setJob(j); }, [setJob]);
   /** Save the current job under a new name (new file in jobs/). */
@@ -87,5 +94,5 @@ export function useJobStore() {
     return { toolpaths, stats, gcode: post.gcode, totalSeconds: post.seconds, signature: sig };
   }, [job]);
 
-  return { files, file, setFile, job, setJob, createJob, saveAs, derived, error, saving, reload: () => { dirty.current = false; load(file); } };
+  return { files, file, setFile, job, setJob, createJob, saveAs, derived, error, saving, reload: () => { dirty.current = false; load(file); }, undo, redo, canUndo: past.current.length > 0, canRedo: future.current.length > 0, histTick };
 }

@@ -1,5 +1,6 @@
 import type { Job, Toolpath, MachineProfile, Tool } from '@cool-cam/core';
 import { MACHINES, SHAPEOKO_HDM, getTool, estimate, formatDuration, stockBounds } from '@cool-cam/core';
+import { fitArcs } from './arcs.js';
 
 export interface PostOptions {
   /** Override the machine's tool-change style. */
@@ -14,6 +15,10 @@ export interface PostOptions {
   lineNumbers?: boolean;
   /** Include per-move kind comments (verbose). */
   annotate?: boolean;
+  /** Fit G2/G3 arcs over circular runs (default true). */
+  arcs?: boolean;
+  /** Arc fitting tolerance, mm (default 0.01). */
+  arcTolerance?: number;
 }
 
 export interface PostResult {
@@ -22,6 +27,8 @@ export interface PostResult {
   toolChanges: number;
   seconds: number;
   warnings: string[];
+  /** Number of G2/G3 arcs emitted. */
+  arcs: number;
 }
 
 /**
@@ -57,7 +64,7 @@ export function postGrbl(job: Job, toolpaths: Toolpath[], opts: PostOptions = {}
   let curTool: string | null = null;
   let curF: number | null = null;
   let cx = NaN, cy = NaN, cz = NaN;
-  let toolChanges = 0;
+  let toolChanges = 0; let arcCount = 0;
   let spindleOn = false;
 
   const safeUp = () => { emit(`G53 G0 Z${fmt(machine.safeZMachine)}`); cz = NaN; };
@@ -85,7 +92,14 @@ export function postGrbl(job: Job, toolpaths: Toolpath[], opts: PostOptions = {}
     }
     const startZ = b.top + job.safeZ;
     seconds += estimate(tp, machine, { kind: 'rapid', x: isNaN(cx) ? 0 : cx, y: isNaN(cy) ? 0 : cy, z: isNaN(cz) ? startZ : cz }).seconds;
-    for (const m of tp.moves) {
+    const segments = opts.arcs === false ? tp.moves.map(m => ({ kind: 'line' as const, m })) : fitArcs(tp.moves, { kind: 'rapid', x: isNaN(cx) ? 0 : cx, y: isNaN(cy) ? 0 : cy, z: isNaN(cz) ? startZ : cz }, opts.arcTolerance ?? 0.01);
+    for (const seg of segments) {
+      const m = seg.m;
+      if (seg.kind === 'arc') {
+        const f = Math.round(m.f ?? 1000); const fw = f !== curF ? ` F${f}` : ''; curF = f;
+        emit(`${seg.cw ? 'G2' : 'G3'} X${fmt(m.x)} Y${fmt(m.y)} I${fmt(seg.cx - cx)} J${fmt(seg.cy - cy)}${fw}`);
+        cx = m.x; cy = m.y; cz = m.z; arcCount++; continue;
+      }
       const words: string[] = [];
       if (Math.abs(m.x - cx) > 5e-4 || isNaN(cx)) words.push(`X${fmt(m.x)}`);
       if (Math.abs(m.y - cy) > 5e-4 || isNaN(cy)) words.push(`Y${fmt(m.y)}`);
@@ -117,9 +131,9 @@ export function postGrbl(job: Job, toolpaths: Toolpath[], opts: PostOptions = {}
   if (opts.parkAtOrigin) emit('G0 X0 Y0');
   emit('M30');
   const gcode = out.join('\n') + '\n';
-  return { gcode, lines: out.length, toolChanges, seconds, warnings };
+  return { gcode, lines: out.length, toolChanges, seconds, warnings, arcs: arcCount };
 }
 
 export function summarizePost(r: PostResult): string {
-  return `${r.lines} lines, ${r.toolChanges} tool change(s), est. ${formatDuration(r.seconds)}${r.warnings.length ? `, warnings: ${r.warnings.join(' | ')}` : ''}`;
+  return `${r.lines} lines (${r.arcs} arcs), ${r.toolChanges} tool change(s), est. ${formatDuration(r.seconds)}${r.warnings.length ? `, warnings: ${r.warnings.join(' | ')}` : ''}`;
 }

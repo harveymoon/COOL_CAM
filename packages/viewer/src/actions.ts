@@ -1,11 +1,11 @@
-import { uid, bbox, parseDxf, parseSvg, stockBounds, feedsAndSpeeds, parseStl, parseObj, placementFor, IDENTITY_PLACEMENT, proposeOperations } from '@cool-cam/core';
-import type { Op, Shape, MaterialId, Tool, Model } from '@cool-cam/core';
+import { uid, bbox, parseDxf, parseSvg, stockBounds, feedsAndSpeeds, parseStl, parseObj, placementFor, IDENTITY_PLACEMENT, proposeOperations, polylineFromParams, translateParams, union, difference, intersection, offsetPolygons, normalize, signedArea } from '@cool-cam/core';
+import type { Op, Shape, MaterialId, Tool, Model, ShapeParams, Polyline } from '@cool-cam/core';
 import type { Ui } from './ui';
 import { showPanel } from './layout';
 
 /** Shared, menu-callable actions so the menubar, panels and modals do the same thing. */
 
-export function opDefaultName(op: Op) { return op.type === 'profile' ? `Profile ${op.side}` : op.type === 'pocket' ? 'Pocket' : op.type === 'drill' ? 'Drill' : op.type === 'rough3d' ? '3D Rough' : '3D Finish'; }
+export function opDefaultName(op: Op) { return op.type === 'profile' ? `Profile ${op.side}` : op.type === 'pocket' ? 'Pocket' : op.type === 'drill' ? 'Drill' : op.type === 'rough3d' ? '3D Rough' : op.type === 'finish3d' ? '3D Finish' : op.type === 'vcarve' ? 'V-carve' : 'Keyhole'; }
 
 export function addOperation(ui: Ui, type: Op['type']) {
   const job = ui.job; if (!job) return;
@@ -16,6 +16,8 @@ export function addOperation(ui: Ui, type: Op['type']) {
   if (type === 'pocket') op = { ...base, type: 'pocket', entry: 'helix' };
   else if (type === 'profile') op = { ...base, type: 'profile', side: 'outside', depth: job.stock.thickness, tabs: { count: 4, width: 6, height: 2 } };
   else if (type === 'drill') op = { ...base, type: 'drill', depth: job.stock.thickness, peck: 3 };
+  else if (type === 'vcarve') { const v = job.tools.find(t => t.type === 'vbit'); op = { ...base, type: 'vcarve', toolId: v?.id ?? base.toolId, depth: 0, stepover: 0.4 }; }
+  else if (type === 'keyhole') { const k = job.tools.find(t => t.type === 'keyhole'); op = { ...base, type: 'keyhole', toolId: k?.id ?? base.toolId, depth: Math.min(8, job.stock.thickness - 2), length: 20, angle: 90 }; }
   else if (type === 'rough3d') {
     if (!modelId) return;
     const flat = job.tools.find(t => t.type === 'endmill') ?? tool;
@@ -107,4 +109,62 @@ export function proposeForModel(ui: Ui, modelId: string): string[] {
     const api = ui.dockRef.current; if (api) showPanel(api, 'ops');
     return p.notes;
   } catch (e) { return [`Proposal failed: ${(e as Error).message}`]; }
+}
+
+/** Show the Parameters panel in shape mode for the given shapes. */
+export function openShapeParams(ui: Ui, ids: string[]) {
+  ui.setSelectedShapes(ids); ui.setParamsMode('shape');
+  const api = ui.dockRef.current; if (api) showPanel(api, 'opedit');
+}
+
+export interface TransformOpts { dx?: number; dy?: number; scale?: number; rotateDeg?: number; mirrorX?: boolean; mirrorY?: boolean; aboutCenter?: boolean }
+/** Transform the selected shapes (or all when none selected). Pure translations keep primitive parameters editable. */
+export function transformShapes(ui: Ui, o: TransformOpts) {
+  const job = ui.job; if (!job) return;
+  const ids = new Set((ui.selectedShapes.length ? ui.selectedShapes : job.shapes.map(s => s.id)));
+  const targets = job.shapes.filter(s => ids.has(s.id)); if (!targets.length) return;
+  const bb = bbox(targets.map(s => s.polyline)); const c = o.aboutCenter === false ? { x: 0, y: 0 } : { x: (bb.minX + bb.maxX) / 2, y: (bb.minY + bb.maxY) / 2 };
+  const dx = o.dx ?? 0, dy = o.dy ?? 0, k = o.scale ?? 1, th = ((o.rotateDeg ?? 0) * Math.PI) / 180, cs = Math.cos(th), sn = Math.sin(th);
+  const mx = o.mirrorX ? -1 : 1, my = o.mirrorY ? -1 : 1;
+  const pureMove = k === 1 && th === 0 && mx === 1 && my === 1;
+  const f = (p: { x: number; y: number }) => { const x = (p.x - c.x) * k * mx, y = (p.y - c.y) * k * my; return { x: c.x + x * cs - y * sn + dx, y: c.y + x * sn + y * cs + dy }; };
+  ui.setJob(j => ({ ...j, shapes: j.shapes.map(s => {
+    if (!ids.has(s.id)) return s;
+    const points = s.polyline.points.map(f); if (mx * my < 0) points.reverse();
+    const params = s.params ? (pureMove ? translateParams(s.params, dx, dy) : undefined) : undefined;
+    return { ...s, polyline: { closed: s.polyline.closed, points }, params };
+  }) }));
+}
+
+/** Replace a parametric shape's parameters and rebuild its outline (text shapes are rebuilt by the text module). */
+export function applyShapeParams(ui: Ui, id: string, params: ShapeParams) {
+  if (params.kind === 'text') { void import('./text').then(m => m.rebuildText(ui, id, params)); return; }
+  const pl = polylineFromParams(params); if (!pl) return;
+  ui.setJob(j => ({ ...j, shapes: j.shapes.map(s => (s.id === id ? { ...s, polyline: pl, params } : s)) }));
+}
+
+/** Boolean the selected closed shapes into new shape(s); the originals are removed. */
+export function booleanShapes(ui: Ui, mode: 'union' | 'subtract' | 'intersect') {
+  const job = ui.job; if (!job) return;
+  const sel = ui.selectedShapes.map(id => job.shapes.find(s => s.id === id)!).filter(s => s && s.polyline.closed);
+  if (sel.length < 2) return;
+  const a = normalize([sel[0].polyline]); const rest = normalize(sel.slice(1).map(s => s.polyline));
+  const out: Polyline[] = mode === 'union' ? union(a.concat(rest)) : mode === 'subtract' ? difference(a, rest) : intersection(a, rest);
+  if (!out.length) return;
+  const base = `${sel[0].id}_${mode}`; const ids = new Set(sel.map(s => s.id));
+  const shapes: Shape[] = out.map((pl, i) => ({ id: out.length > 1 ? `${base}_${i + 1}` : base, name: mode, polyline: pl }));
+  ui.setJob(j => ({ ...j, shapes: [...j.shapes.filter(s => !ids.has(s.id)), ...shapes], ops: j.ops.map(o => ({ ...o, shapeIds: o.shapeIds.some(x => ids.has(x)) ? [...o.shapeIds.filter(x => !ids.has(x)), ...shapes.map(s => s.id)] : o.shapeIds })) }));
+  openShapeParams(ui, shapes.map(s => s.id));
+}
+
+/** Offset the selected closed shapes by d mm (new shapes, originals kept). Open paths get a closed outline around them. */
+export function offsetShapes(ui: Ui, d: number) {
+  const job = ui.job; if (!job || !d) return;
+  const sel = job.shapes.filter(s => ui.selectedShapes.includes(s.id)); if (!sel.length) return;
+  const closed = normalize(sel.filter(s => s.polyline.closed).map(s => s.polyline));
+  const out = offsetPolygons(closed, d).filter(l => Math.abs(signedArea(l)) > 0.01);
+  if (!out.length) return;
+  const shapes: Shape[] = out.map((pl, i) => ({ id: `${sel[0].id}_off${d > 0 ? '+' : ''}${d}${out.length > 1 ? `_${i + 1}` : ''}`, name: `offset ${d}`, polyline: pl }));
+  ui.setJob(j => ({ ...j, shapes: [...j.shapes, ...shapes] }));
+  openShapeParams(ui, shapes.map(s => s.id));
 }

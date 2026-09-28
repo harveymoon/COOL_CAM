@@ -1,5 +1,5 @@
 import { feedsAndSpeeds, formatDuration, profileTabCenters } from '@cool-cam/core';
-import type { Op, ProfileOp, PocketOp, DrillOp, Rough3DOp, Finish3DOp, MaterialId, Tabs, BoundaryMode, Containment } from '@cool-cam/core';
+import type { Op, ProfileOp, PocketOp, DrillOp, Rough3DOp, Finish3DOp, VCarveOp, KeyholeOp, MaterialId, Tabs, BoundaryMode, Containment } from '@cool-cam/core';
 import type { ReactNode } from 'react';
 import { Num, Sel, Check } from './Fields';
 import { opDefaultName } from './actions';
@@ -54,13 +54,15 @@ export function OpEditorForm({ id }: { id: string }) {
 
       <Section title="Parameters">
         <div className="grid3">
-          <Num label={op.type === 'rough3d' || op.type === 'finish3d' ? 'max depth' : 'depth'} value={op.depth} step={0.5} hint="depth limit below stock top" onChange={v => u({ depth: v ?? 1 })} />
-          {op.type !== 'finish3d' && <Num label={op.type === 'rough3d' ? 'stepdown' : 'per pass'} value={op.depthPerPass} step={0.5} placeholder={tool ? String(tool.diameter) : ''} onChange={v => u({ depthPerPass: v })} />}
-          {op.type !== 'rough3d' && op.type !== 'finish3d' && <Num label="start depth" value={op.startDepth} step={0.5} onChange={v => u({ startDepth: v })} />}
+          <Num label={op.type === 'rough3d' || op.type === 'finish3d' ? 'max depth' : op.type === 'vcarve' ? 'depth cap (0=none)' : 'depth'} value={op.depth} step={0.5} hint="depth limit below stock top" onChange={v => u({ depth: v ?? (op.type === 'vcarve' ? 0 : 1) })} />
+          {op.type !== 'finish3d' && op.type !== 'vcarve' && op.type !== 'keyhole' && <Num label={op.type === 'rough3d' ? 'stepdown' : 'per pass'} value={op.depthPerPass} step={0.5} placeholder={tool ? String(tool.diameter) : ''} onChange={v => u({ depthPerPass: v })} />}
+          {(op.type === 'profile' || op.type === 'pocket' || op.type === 'drill') && <Num label="start depth" value={op.startDepth} step={0.5} onChange={v => u({ startDepth: v })} />}
         </div>
         {op.type === 'profile' && <ProfileParams op={op} u={u} />}
         {op.type === 'pocket' && <PocketFields op={op} u={u} dia={tool?.diameter} />}
         {op.type === 'drill' && <DrillFields op={op} u={u} />}
+        {op.type === 'vcarve' && <VCarveFields op={op} u={u} />}
+        {op.type === 'keyhole' && <KeyholeFields op={op} u={u} />}
         {op.type === 'rough3d' && <Rough3DFields op={op} u={u} dia={tool?.diameter} />}
         {op.type === 'finish3d' && <Finish3DFields op={op} u={u} dia={tool?.diameter} />}
       </Section>
@@ -92,11 +94,17 @@ function Section({ title, extra, children }: { title: string; extra?: ReactNode;
 
 function ProfileParams({ op, u }: { op: ProfileOp; u: (p: Record<string, unknown>) => void }) {
   return (
+    <>
     <div className="grid3">
       <Sel label="side" value={op.side} options={[{ value: 'outside', label: 'outside' }, { value: 'inside', label: 'inside' }, { value: 'on', label: 'on line' }] as { value: ProfileOp['side']; label: string }[]} onChange={v => u({ side: v })} />
       <Sel label="direction" value={op.direction ?? 'climb'} options={[{ value: 'climb', label: 'climb' }, { value: 'conventional', label: 'conventional' }] as { value: 'climb' | 'conventional'; label: string }[]} onChange={v => u({ direction: v })} />
       <Num label="stock to leave" value={op.stockToLeave} step={0.1} onChange={v => u({ stockToLeave: v })} />
     </div>
+    <div className="grid2">
+      <Sel label="entry" value={op.entry ?? 'plunge'} options={[{ value: 'plunge', label: 'plunge' }, { value: 'ramp', label: 'ramp along contour' }] as { value: 'plunge' | 'ramp'; label: string }[]} onChange={v => u({ entry: v })} />
+      <Num label="ramp angle °" value={op.rampAngle} step={1} placeholder="5" onChange={v => u({ rampAngle: v })} />
+    </div>
+    </>
   );
 }
 
@@ -152,11 +160,34 @@ function PocketFields({ op, u, dia }: { op: PocketOp; u: (p: Record<string, unkn
         <Sel label="entry" value={op.entry ?? 'helix'} options={[{ value: 'helix', label: 'helix' }, { value: 'ramp', label: 'ramp' }, { value: 'plunge', label: 'plunge' }] as { value: 'helix' | 'ramp' | 'plunge'; label: string }[]} onChange={v => u({ entry: v })} />
         <Sel label="direction" value={op.direction ?? 'climb'} options={[{ value: 'climb', label: 'climb' }, { value: 'conventional', label: 'conventional' }] as { value: 'climb' | 'conventional'; label: string }[]} onChange={v => u({ direction: v })} />
       </div>
-      <div className="grid2">
+      <div className="grid3">
         <Num label="stock to leave" value={op.stockToLeave} step={0.1} onChange={v => u({ stockToLeave: v })} />
         <Check label="finish pass" value={op.finishPass} hint="wall pass at zero stock-to-leave" onChange={v => u({ finishPass: v })} />
+        <RestTool op={op} u={u} />
       </div>
     </>
+  );
+}
+function RestTool({ op, u }: { op: PocketOp; u: (p: Record<string, unknown>) => void }) {
+  const ui = useUi(); const tools = ui.job?.tools ?? [];
+  return <Sel label="rest of" value={op.restToolId ?? ''} options={[{ value: '', label: '— (full pocket)' }, ...tools.filter(t => t.id !== op.toolId).map(t => ({ value: t.id, label: `T${t.number} ${t.name}` }))]} hint="rest machining: only cut what this larger tool left behind" onChange={v => u({ restToolId: v || undefined })} />;
+}
+function VCarveFields({ op, u }: { op: VCarveOp; u: (p: Record<string, unknown>) => void }) {
+  const ui = useUi(); const tools = ui.job?.tools ?? [];
+  return (
+    <div className="grid3">
+      <Num label="pass spacing" value={op.stepover} step={0.1} placeholder="0.4" hint="distance between offset passes, mm" onChange={v => u({ stepover: v })} />
+      <Sel label="flat clearing" value={op.flatToolId ?? ''} options={[{ value: '', label: '— none' }, ...tools.filter(t => t.type === 'endmill').map(t => ({ value: t.id, label: `T${t.number} ${t.name}` }))]} hint="advanced V-carve: endmill clears wide areas flat at the depth cap" onChange={v => u({ flatToolId: v || undefined })} />
+      <Num label="flat stepover" value={op.flatStepover} step={0.1} placeholder="40%" onChange={v => u({ flatStepover: v })} />
+    </div>
+  );
+}
+function KeyholeFields({ op, u }: { op: KeyholeOp; u: (p: Record<string, unknown>) => void }) {
+  return (
+    <div className="grid2">
+      <Num label="slot length" value={op.length} step={1} placeholder="20" onChange={v => u({ length: v })} />
+      <Num label="angle °" value={op.angle} step={15} placeholder="90" hint="0 = +X, 90 = +Y; 2-point line shapes set their own direction" onChange={v => u({ angle: v })} />
+    </div>
   );
 }
 function DrillFields({ op, u }: { op: DrillOp; u: (p: Record<string, unknown>) => void }) {

@@ -1,6 +1,6 @@
 import type { DockviewApi, SerializedDockview } from 'dockview-react';
 
-export const PANELS: Record<string, string> = { viewport: 'Viewport', job: 'Job & Stock', shapes: 'Shapes', models: 'Models', ops: 'Operations', opedit: 'Edit operation', output: 'Output' };
+export const PANELS: Record<string, string> = { viewport: 'Viewport', job: 'Job & Stock', shapes: 'Shapes', models: 'Models', ops: 'Operations', opedit: 'Parameters', output: 'Output' };
 const KEY_CURRENT = 'coolcam.layout.current';
 const KEY_SAVED = 'coolcam.layouts';
 
@@ -41,5 +41,5 @@ export function loadLayout(api: DockviewApi, name: string): boolean { const l = 
 
 /** Keep panels from squishing: side panels get a sensible minimum width, the viewport a bit more. */
 export function applyConstraints(api: DockviewApi) {
-  for (const p of api.panels) p.api.setConstraints({ minimumWidth: p.id === 'viewport' ? 320 : 280, minimumHeight: 120 });
+  for (const p of api.panels) { p.api.setConstraints({ minimumWidth: p.id === 'viewport' ? 320 : 280, minimumHeight: 120 }); if (PANELS[p.id] && p.title !== PANELS[p.id]) p.api.setTitle(PANELS[p.id]); }
 }

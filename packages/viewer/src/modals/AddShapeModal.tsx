@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { rect, circleShape, slot, regularPolygon, polygon, uid } from '@cool-cam/core';
-import type { Polyline, Shape } from '@cool-cam/core';
+import { polylineFromParams, polygon, uid } from '@cool-cam/core';
+import type { Polyline, Shape, ShapeParams } from '@cool-cam/core';
 import { Modal } from '../Modal';
 import { Num, Sel, Text } from '../Fields';
 import { useUi } from '../ui';
+import { openShapeParams } from '../actions';
 
 type Kind = 'rect' | 'circle' | 'slot' | 'regular_polygon' | 'polygon';
 
@@ -16,17 +17,19 @@ export function AddShapeModal() {
   const set = (k: string) => (v: number | undefined) => setF(s => ({ ...s, [k]: v }));
   const n = (k: string, d = 0) => f[k] ?? d;
   const add = () => {
-    let pl: Polyline;
+    let pl: Polyline | null; let params: ShapeParams | undefined;
     switch (kind) {
-      case 'rect': pl = rect(n('x'), n('y'), n('width', 10), n('height', 10), n('cornerRadius')); break;
-      case 'circle': pl = circleShape(n('x'), n('y'), n('diameter', 10)); break;
-      case 'slot': pl = slot(n('x'), n('y'), n('x2'), n('y2'), n('slotWidth', 6)); break;
-      case 'regular_polygon': pl = regularPolygon(n('x'), n('y'), Math.max(3, Math.round(n('sides', 6))), n('diameter', 20), n('rotation')); break;
-      case 'polygon': { const pts = poly.split(/\s+/).map(t => t.split(',').map(Number)).filter(a => a.length === 2 && a.every(Number.isFinite)).map(([x, y]) => ({ x, y })); if (pts.length < 2) return; pl = polygon(pts, true); break; }
+      case 'rect': params = { kind: 'rect', x: n('x'), y: n('y'), w: n('width', 10), h: n('height', 10), r: n('cornerRadius') }; break;
+      case 'circle': params = { kind: 'circle', cx: n('x'), cy: n('y'), d: n('diameter', 10) }; break;
+      case 'slot': params = { kind: 'slot', x1: n('x'), y1: n('y'), x2: n('x2'), y2: n('y2'), w: n('slotWidth', 6) }; break;
+      case 'regular_polygon': params = { kind: 'regular_polygon', cx: n('x'), cy: n('y'), sides: Math.max(3, Math.round(n('sides', 6))), d: n('diameter', 20), rot: n('rotation') }; break;
     }
-    const s: Shape = { id: id.trim() || uid(kind), name: kind, polyline: pl };
+    if (params) pl = polylineFromParams(params);
+    else { const pts = poly.split(/\s+/).map(t => t.split(',').map(Number)).filter(a => a.length === 2 && a.every(Number.isFinite)).map(([x, y]) => ({ x, y })); if (pts.length < 2) return; pl = polygon(pts, true); }
+    if (!pl) return;
+    const s: Shape = { id: id.trim() || uid(kind), name: kind, polyline: pl, params };
     if (ui.job?.shapes.some(x => x.id === s.id)) { alert(`Shape id ${s.id} already exists`); return; }
-    ui.setJob(j => ({ ...j, shapes: [...j.shapes, s] })); ui.setSelectedShapes([s.id]); ui.closeModal();
+    ui.setJob(j => ({ ...j, shapes: [...j.shapes, s] })); ui.closeModal(); openShapeParams(ui, [s.id]);
   };
   return (
     <Modal title="Add shape" onClose={ui.closeModal} footer={<><button onClick={ui.closeModal}>Cancel</button><button className="primary" onClick={add}>Add</button></>}>
@@ -38,6 +41,7 @@ export function AddShapeModal() {
         {kind === 'slot' && <><div className="grid2"><Num label="x1" value={f.x} onChange={set('x')} /><Num label="y1" value={f.y} onChange={set('y')} /></div><div className="grid3"><Num label="x2" value={f.x2} onChange={set('x2')} /><Num label="y2" value={f.y2} onChange={set('y2')} /><Num label="width" value={f.slotWidth} onChange={set('slotWidth')} /></div></>}
         {kind === 'regular_polygon' && <><div className="grid2"><Num label="cx" value={f.x} onChange={set('x')} /><Num label="cy" value={f.y} onChange={set('y')} /></div><div className="grid3"><Num label="sides" value={f.sides} step={1} onChange={set('sides')} /><Num label="diameter" value={f.diameter} onChange={set('diameter')} /><Num label="rot °" value={f.rotation} onChange={set('rotation')} /></div></>}
         {kind === 'polygon' && <Text label="points" value={poly} onChange={setPoly} hint="x,y pairs separated by spaces" />}
+        <div className="muted">Primitives stay editable in the Parameters panel after you add them.</div>
       </div>
     </Modal>
   );

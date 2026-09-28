@@ -6,6 +6,12 @@ import path from 'node:path';
 const root = path.resolve(__dirname, '../..');
 const jobsDir = process.env.COOL_CAM_JOBS_DIR ?? path.join(root, 'jobs');
 const libraryFile = process.env.COOL_CAM_LIBRARY ?? path.join(root, 'library', 'tools.json');
+const FONT_DIRS = ['/System/Library/Fonts/Supplemental', '/System/Library/Fonts', '/Library/Fonts', path.join(process.env.HOME ?? '', 'Library/Fonts'), path.join(root, 'library', 'fonts')];
+function listFonts(): { name: string; file: string }[] {
+  const out: { name: string; file: string }[] = [];
+  for (const d of FONT_DIRS) { try { for (const f of fs.readdirSync(d)) if (/\.(ttf|otf)$/i.test(f)) out.push({ name: f.replace(/\.(ttf|otf)$/i, ''), file: path.join(d, f) }); } catch { /* missing */ } }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
 
 /** Serves ./jobs over /api/jobs and pushes a websocket event whenever a job file changes (MCP writes → viewer reloads). */
 function jobsApi(): Plugin {
@@ -15,6 +21,12 @@ function jobsApi(): Plugin {
       fs.mkdirSync(jobsDir, { recursive: true });
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? '';
+        if (url === '/api/fonts') { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(listFonts().map(f => f.name))); return; }
+        if (url.startsWith('/api/fonts/')) {
+          const name = decodeURIComponent(url.slice('/api/fonts/'.length).split('?')[0]);
+          const hit = listFonts().find(f => f.name === name); if (!hit) { res.statusCode = 404; res.end('font not found'); return; }
+          res.setHeader('content-type', 'font/ttf'); res.end(fs.readFileSync(hit.file)); return;
+        }
         if (url === '/api/tools') {
           if (req.method === 'PUT') {
             let body = ''; req.on('data', (c: Buffer) => { body += c; });
@@ -67,7 +79,7 @@ export default defineConfig({
       '@cool-cam/sim': path.resolve(__dirname, '../sim/src/index.ts'),
     },
   },
-  optimizeDeps: { include: ['clipper-lib'] },
+  optimizeDeps: { include: ['clipper-lib', 'opentype.js'] },
   worker: { format: 'es' },
   server: { port: 5173, fs: { allow: [root] } },
 });

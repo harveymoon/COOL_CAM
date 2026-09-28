@@ -177,3 +177,16 @@ button.mini { padding: 1px 6px; font-size: 11px; }
 /* panels scroll horizontally instead of squishing below their natural width */
 .panel-body { min-width: 260px; overflow: auto; }
 .dv-content-container { overflow: auto; }
+/* timeline with operation segments */
+.timeline { gap: 8px; }
+.tl-track { position: relative; flex: 1; height: 30px; background: var(--panel-2); border: 1px solid var(--border); cursor: ew-resize; user-select: none; }
+.tl-seg { position: absolute; top: 4px; height: 14px; opacity: 0.75; overflow: hidden; border-right: 1px solid var(--bg); pointer-events: auto; }
+.tl-seg:hover, .tl-seg.active { opacity: 1; outline: 1px solid var(--text); }
+.tl-seg .tl-label { position: absolute; left: 4px; top: 0; font-size: 10px; line-height: 14px; color: #041018; white-space: nowrap; pointer-events: none; }
+.tl-change { position: absolute; left: 0; top: -4px; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--text); }
+.tl-scrub { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; margin: 0; height: 12px; -webkit-appearance: none; appearance: none; background: transparent; }
+.tl-scrub::-webkit-slider-runnable-track { height: 4px; background: var(--border); }
+.tl-scrub::-webkit-slider-thumb { -webkit-appearance: none; width: 8px; height: 12px; margin-top: -4px; background: var(--accent); cursor: ew-resize; }
+.tl-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
+.tl-knob { position: absolute; bottom: 0; left: -4px; width: 10px; height: 9px; background: var(--accent); }
+.tl-tip { position: absolute; bottom: 34px; background: var(--panel-2); border: 1px solid var(--border); padding: 4px 8px; font-size: 11px; white-space: nowrap; pointer-events: none; z-index: 10; color: var(--text); }

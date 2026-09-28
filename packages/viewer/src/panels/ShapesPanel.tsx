@@ -1,6 +1,6 @@
 import { bbox, perimeter, signedArea } from '@cool-cam/core';
 import { useUi } from '../ui';
-import { duplicateShapes, deleteShapes } from '../actions';
+import { duplicateShapes, deleteShapes, openShapeParams } from '../actions';
 
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -8,12 +8,12 @@ export function ShapesPanel() {
   const ui = useUi();
   const { job, selectedShapes, setSelectedShapes } = ui;
   if (!job) return <div className="empty">No job.</div>;
-  const toggle = (id: string, multi: boolean) => setSelectedShapes(multi ? (selectedShapes.includes(id) ? selectedShapes.filter(x => x !== id) : [...selectedShapes, id]) : [id]);
+  const toggle = (id: string, multi: boolean) => { setSelectedShapes(multi ? (selectedShapes.includes(id) ? selectedShapes.filter(x => x !== id) : [...selectedShapes, id]) : [id]); ui.setParamsMode('shape'); };
   return (
     <div className="panel-body">
       <div className="btns" style={{ marginBottom: 6 }}>
         <button onClick={() => ui.openModal({ kind: 'addShape' })}>+ Shape</button>
-        <button onClick={() => ui.openModal({ kind: 'transform' })} disabled={!job.shapes.length}>Transform…</button>
+        <button className="primary" onClick={() => openShapeParams(ui, selectedShapes.length ? selectedShapes : job.shapes.map(s => s.id))} disabled={!job.shapes.length}>Edit</button>
         <button onClick={() => duplicateShapes(ui)} disabled={!selectedShapes.length}>Duplicate</button>
         <button className="danger" onClick={() => deleteShapes(ui)} disabled={!selectedShapes.length}>Delete</button>
       </div>

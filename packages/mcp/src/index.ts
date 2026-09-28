@@ -8,6 +8,7 @@ import {
   newJob, parseDxf, parseSvg, bbox, uid, generateToolpaths, estimate, formatDuration, feedsAndSpeeds, MATERIALS, MACHINES, SHAPEOKO_HDM,
   rect, circleShape, polygon, regularPolygon, slot, signedArea, perimeter, stockBounds, getTool,
   parseStl, parseObj, meshBBox, placedMesh, placementFor, IDENTITY_PLACEMENT, getModel, proposeOperations,
+  loadFont, textToPolylines, heightmapToMesh, decodeImage,
 } from '@cool-cam/core';
 import type { Job, Op, Tool, Shape, Polyline, MaterialId, Model } from '@cool-cam/core';
 import { postGrbl, summarizePost } from '@cool-cam/post';
@@ -16,6 +17,18 @@ import { JobState } from './state.js';
 
 const jobsDir = process.env.COOL_CAM_JOBS_DIR ?? path.resolve(process.cwd(), 'jobs');
 const libraryFile = process.env.COOL_CAM_LIBRARY ?? path.resolve(jobsDir, '..', 'library', 'tools.json');
+const FONT_DIRS = ['/System/Library/Fonts/Supplemental', '/System/Library/Fonts', '/Library/Fonts', path.join(process.env.HOME ?? '', 'Library/Fonts'), path.resolve(jobsDir, '..', 'library', 'fonts')];
+function listFonts(): { name: string; file: string }[] {
+  const out: { name: string; file: string }[] = [];
+  for (const d of FONT_DIRS) { try { for (const f of fs.readdirSync(d)) if (/\.(ttf|otf)$/i.test(f)) out.push({ name: f.replace(/\.(ttf|otf)$/i, ''), file: path.join(d, f) }); } catch { /* missing dir */ } }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+function fontFile(name: string): string {
+  if (fs.existsSync(name)) return name;
+  const hit = listFonts().find(f => f.name.toLowerCase() === name.toLowerCase()) ?? listFonts().find(f => f.name.toLowerCase().startsWith(name.toLowerCase()));
+  if (!hit) throw new Error(`Font '${name}' not found. Use list_fonts.`);
+  return hit.file;
+}
 function readLibrary(): Tool[] { try { const t = JSON.parse(fs.readFileSync(libraryFile, 'utf8')); return Array.isArray(t) && t.length ? t : []; } catch { return []; } }
 function writeLibrary(tools: Tool[]) { fs.mkdirSync(path.dirname(libraryFile), { recursive: true }); fs.writeFileSync(libraryFile, JSON.stringify(tools, null, 1)); }
 const state = new JobState(jobsDir);
@@ -163,6 +176,42 @@ server.registerTool('propose_operations', {
   return { applied: apply !== false, notes: p.notes, features: p.features, ops: p.ops.map(o => ({ id: o.id, name: o.name, type: o.type, tool: o.toolId, depth: o.depth, startDepth: o.startDepth })), shapes: p.shapes.map(s => s.id) };
 }));
 
+server.registerTool('list_fonts', { title: 'List fonts', description: 'Fonts available for add_text (system TTF/OTF fonts plus library/fonts).', inputSchema: { filter: z.string().optional() } },
+  guarded(({ filter }) => ({ fonts: listFonts().map(f => f.name).filter(n => !filter || n.toLowerCase().includes(filter.toLowerCase())).slice(0, 300) })));
+
+server.registerTool('add_text', {
+  title: 'Add text',
+  description: 'Outline a string with a font into closed shapes (letters with counters become outer + hole loops). Returns the shape ids; use them with vcarve (V-bit) or pocket/profile ops. Size is the em size in mm; x,y is the baseline anchor.',
+  inputSchema: { text: z.string(), font: z.string().describe('font name from list_fonts, e.g. "Arial Bold", or a file path'), size: z.number().positive(), x: z.number(), y: z.number(), align: z.enum(['left', 'center', 'right']).optional(), spacing: z.number().optional().describe('extra letter spacing, mm'), id: z.string().optional().describe('group id prefix') },
+}, guarded(({ text: txt, font: fontName, size, x, y, align, spacing, id }) => {
+  const job = state.require();
+  const file = fontFile(fontName); const font = loadFont(file, fs.readFileSync(file).buffer.slice(0) as ArrayBuffer);
+  const loops = textToPolylines(font, { text: txt, size, x, y, align, spacing });
+  if (!loops.length) throw new Error('No outlines produced (empty text or unsupported glyphs).');
+  const group = id ?? uid('text');
+  const params = { kind: 'text' as const, text: txt, font: path.basename(file).replace(/\.(ttf|otf)$/i, ''), size, x, y, align: align ?? 'left', spacing };
+  const shapes: Shape[] = loops.map((pl, i) => ({ id: `${group}_${i + 1}`, name: `${txt} ${i + 1}`, polyline: pl, params, group }));
+  job.shapes = [...job.shapes.filter(s => s.group !== group), ...shapes];
+  state.invalidate(); state.save();
+  return { group, shapes: shapes.map(shapeSummary), bbox: bbox(loops), hint: 'For carved lettering: add_operation type vcarve with a V-bit (t301/t302) and these shapeIds.' };
+}));
+
+server.registerTool('import_heightmap_image', {
+  title: 'Import image as heightmap model',
+  description: 'Turn a PNG/JPEG into a relief model: white = high (invert to flip), `depth` mm of relief over a solid `base`. Then use rough3d/finish3d (a ball nose with a fine stepover for the finish).',
+  inputSchema: { path: z.string(), width: z.number().positive().describe('physical width, mm'), depth: z.number().positive().describe('relief height, mm'), invert: z.boolean().optional(), blur: z.number().optional().describe('box blur radius in pixels'), columns: z.number().int().optional().describe('grid columns (default 160, max 512)'), base: z.number().optional().describe('solid base thickness, mm (default 1)'), id: z.string().optional() },
+}, guarded(async ({ path: file, width, depth, invert, blur, columns, base, id }) => {
+  const job = state.require();
+  const img = await decodeImage(fs.readFileSync(file));
+  const mesh = heightmapToMesh(img, { width, depth, invert, blur, columns, base });
+  const model: Model = { id: id ?? uid('relief'), name: path.basename(file), sourceFile: file, positions: Array.from(mesh.positions, v => Math.round(v * 1000) / 1000), placement: { ...IDENTITY_PLACEMENT } };
+  const b = stockBounds(job.stock);
+  model.placement = placementFor(model, { centerX: (b.x0 + b.x1) / 2, centerY: (b.y0 + b.y1) / 2, top: b.top });
+  job.models = [...(job.models ?? []).filter(m => m.id !== model.id), model];
+  state.invalidate(); state.save();
+  return { model: modelSummary(model), image: { width: img.width, height: img.height }, triangles: mesh.positions.length / 9 };
+}));
+
 server.registerTool('add_shape', {
   title: 'Add primitive shape',
   description: 'Add a rectangle, circle, slot, regular polygon or free polygon as a shape (mm, in work coordinates).',
@@ -224,8 +273,8 @@ server.registerTool('remove_shapes', { title: 'Remove shapes', description: 'Del
   guarded(({ shapeIds }) => { const job = state.require(); job.shapes = job.shapes.filter(s => !shapeIds.includes(s.id)); for (const op of job.ops) op.shapeIds = op.shapeIds.filter(id => !shapeIds.includes(id)); state.invalidate(); state.save(); return { shapes: job.shapes.length }; }));
 
 const toolSchema = z.object({
-  id: z.string(), number: z.number().int(), name: z.string(), type: z.enum(['endmill', 'ballnose', 'vbit', 'drill']), diameter: z.number().positive(), flutes: z.number().int().positive(),
-  fluteLength: z.number().optional(), tipAngle: z.number().optional(), rpm: z.number().optional(), feed: z.number().optional(), plunge: z.number().optional(), notes: z.string().optional(),
+  id: z.string(), number: z.number().int(), name: z.string(), type: z.enum(['endmill', 'ballnose', 'vbit', 'drill', 'keyhole']), diameter: z.number().positive(), flutes: z.number().int().positive(),
+  fluteLength: z.number().optional(), tipAngle: z.number().optional(), shankDiameter: z.number().optional(), rpm: z.number().optional(), feed: z.number().optional(), plunge: z.number().optional(), notes: z.string().optional(),
 });
 server.registerTool('add_tool', { title: 'Add/replace tool', description: 'Add a cutter to the job (replaces an existing id). With library=true it is also saved to the shared tool library used for new jobs and by the viewer.', inputSchema: { tool: toolSchema, library: z.boolean().optional() } },
   guarded(({ tool, library }) => { const job = state.require(); job.tools = job.tools.filter(t => t.id !== tool.id); job.tools.push(tool as Tool); job.tools.sort((a, b) => a.number - b.number); state.invalidate(); state.save(); if (library) { const lib = readLibrary().filter(t => t.id !== tool.id); lib.push(tool as Tool); lib.sort((a, b) => a.number - b.number); writeLibrary(lib); } return { tools: job.tools.map(t => t.id), library: library ? libraryFile : undefined }; }));
@@ -245,8 +294,10 @@ const opBase = {
   startDepth: z.number().optional(), rpm: z.number().optional(), feed: z.number().optional().describe('mm/min'), plunge: z.number().optional().describe('mm/min'), enabled: z.boolean().optional(),
 };
 const opSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('profile'), ...opBase, side: z.enum(['outside', 'inside', 'on']), direction: z.enum(['climb', 'conventional']).optional(), tabs: z.object({ mode: z.enum(['auto', 'manual']).optional().describe('auto: evenly spaced `count` tabs; manual: tabs at `points`'), count: z.number().int(), width: z.number(), height: z.number(), points: z.array(z.object({ x: z.number(), y: z.number() })).optional().describe('manual tab locations (world XY on or near the contour)') }).optional(), stockToLeave: z.number().optional() }),
-  z.object({ type: z.literal('pocket'), ...opBase, stepover: z.number().positive().optional().describe('mm, default 40% of diameter'), direction: z.enum(['climb', 'conventional']).optional(), entry: z.enum(['plunge', 'helix', 'ramp']).optional().describe('default helix'), stockToLeave: z.number().optional(), finishPass: z.boolean().optional() }),
+  z.object({ type: z.literal('profile'), ...opBase, side: z.enum(['outside', 'inside', 'on']), direction: z.enum(['climb', 'conventional']).optional(), tabs: z.object({ mode: z.enum(['auto', 'manual']).optional().describe('auto: evenly spaced `count` tabs; manual: tabs at `points`'), count: z.number().int(), width: z.number(), height: z.number(), points: z.array(z.object({ x: z.number(), y: z.number() })).optional().describe('manual tab locations (world XY on or near the contour)') }).optional(), stockToLeave: z.number().optional(), entry: z.enum(['plunge', 'ramp']).optional().describe('ramp descends along the contour'), rampAngle: z.number().optional() }),
+  z.object({ type: z.literal('pocket'), ...opBase, stepover: z.number().positive().optional().describe('mm, default 40% of diameter'), direction: z.enum(['climb', 'conventional']).optional(), entry: z.enum(['plunge', 'helix', 'ramp']).optional().describe('default helix'), stockToLeave: z.number().optional(), finishPass: z.boolean().optional(), restToolId: z.string().optional().describe('rest machining: only cut what this larger tool left') }),
+  z.object({ type: z.literal('vcarve'), ...opBase, depth: z.number().min(0).describe('max depth cap; 0 = no cap (full V)'), stepover: z.number().positive().optional().describe('offset pass spacing, default 0.4'), flatToolId: z.string().optional().describe('advanced V-carve: endmill that clears wide areas flat at the cap depth'), flatStepover: z.number().positive().optional() }),
+  z.object({ type: z.literal('keyhole'), ...opBase, length: z.number().positive().optional(), angle: z.number().optional().describe('slot direction in degrees (90 = +Y)') }),
   z.object({ type: z.literal('drill'), ...opBase, peck: z.number().optional().describe('Peck depth mm (0 = single plunge)'), dwell: z.number().optional() }),
   z.object({ type: z.literal('rough3d'), ...opBase, shapeIds: z.array(z.string()).optional(), modelId: z.string(), stepover: z.number().positive().optional().describe('mm, default 40% of diameter'), direction: z.enum(['climb', 'conventional']).optional(), entry: z.enum(['plunge', 'helix', 'ramp']).optional(), stockToLeave: z.number().optional().describe('default 0.3 mm'), boundary: z.number().optional().describe('offset applied to the machining boundary, mm (default 0)'), boundaryMode: z.enum(['silhouette', 'bbox', 'stock', 'shapes']).optional().describe('machining boundary: model silhouette (default), model bbox, whole stock, or the op shapeIds'), containment: z.enum(['inside', 'center', 'outside']).optional().describe('tool inside the boundary (default), centre on it, or fully outside'), avoidShapeIds: z.array(z.string()).optional().describe('closed shapes excluded from machining'), resolution: z.number().positive().optional() }),
   z.object({ type: z.literal('finish3d'), ...opBase, shapeIds: z.array(z.string()).optional(), modelId: z.string(), stepover: z.number().positive().optional().describe('mm, default 10% of diameter'), axis: z.enum(['x', 'y']).optional(), stockToLeave: z.number().optional(), boundary: z.number().optional().describe('offset applied to the machining boundary, mm (default 0)'), boundaryMode: z.enum(['silhouette', 'bbox', 'stock', 'shapes']).optional(), containment: z.enum(['inside', 'center', 'outside']).optional(), avoidShapeIds: z.array(z.string()).optional(), finishFloor: z.boolean().optional().describe('also raster the flat floor at the model base (default false)'), resolution: z.number().positive().optional() }),
@@ -254,7 +305,7 @@ const opSchema = z.discriminatedUnion('type', [
 
 server.registerTool('add_operation', {
   title: 'Add operation',
-  description: 'Append a machining operation. profile: cut outside/inside/on a contour (tabs supported, open paths need side "on"). pocket: clear the inside of closed shapes (nested shapes become islands). drill: peck-drill at the centre of each shape. rough3d: Z-level roughing of an imported model (depthPerPass = stepdown). finish3d: parallel raster finishing of a model (ball nose recommended).',
+  description: 'Append a machining operation. profile: cut outside/inside/on a contour (tabs, ramp entry). pocket: clear closed shapes (islands, helix entry, restToolId for rest machining). drill: peck-drill at each shape centre. vcarve: V-bit carving of closed regions (text!), optional flatToolId for advanced clearing. keyhole: hanging slots. rough3d / finish3d: 3D model roughing and raster finishing with machining boundaries.',
   inputSchema: { op: opSchema },
 }, guarded(({ op }) => {
   const job = state.require();
@@ -303,10 +354,10 @@ server.registerTool('simulate', { title: 'Simulate', description: 'Run the mater
 server.registerTool('export_gcode', {
   title: 'Export G-code',
   description: 'Post-process all toolpaths to GRBL G-code for Carbide Motion (M6 tool changes with BitSetter) and write it to a file. Returns a summary and the first lines.',
-  inputSchema: { path: z.string().optional().describe('Output .nc path (default jobs/<name>.nc)'), toolChange: z.enum(['m6-prompt', 'm0-pause', 'none']).optional().describe('m6-prompt for Carbide Motion; m0-pause for gSender/CNCjs'), parkAtOrigin: z.boolean().optional() },
-}, guarded(({ path: out, toolChange, parkAtOrigin }) => {
+  inputSchema: { path: z.string().optional().describe('Output .nc path (default jobs/<name>.nc)'), toolChange: z.enum(['m6-prompt', 'm0-pause', 'none']).optional().describe('m6-prompt for Carbide Motion; m0-pause for gSender/CNCjs'), parkAtOrigin: z.boolean().optional(), arcs: z.boolean().optional().describe('emit G2/G3 arcs (default true)') },
+}, guarded(({ path: out, toolChange, parkAtOrigin, arcs }) => {
   const job = state.require(); const tps = ensureToolpaths();
-  const r = postGrbl(job, tps, { toolChange, parkAtOrigin });
+  const r = postGrbl(job, tps, { toolChange, parkAtOrigin, arcs });
   const file = out ?? path.join(jobsDir, `${state.slug()}.nc`);
   fs.writeFileSync(file, r.gcode);
   const allWarnings = [...r.warnings, ...tps.flatMap(t => t.warnings.map(w => `${t.opName}: ${w}`))];

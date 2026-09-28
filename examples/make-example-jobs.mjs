@@ -60,3 +60,25 @@ for (const ex of examples) {
   console.log(`example-bracket: ${tps.map(t => `${t.opName} ${t.moves.length}`).join(', ')} · est ${C.formatDuration(post.seconds)} · sim ${errors.length ? errors.length + ' ERRORS' : 'clean'}`);
   for (const n of p.notes) console.log('  -', n);
 }
+
+// V-carved sign: text with a 60° V-bit, flat clearing with a 1/8" endmill, rounded plaque cut out with tabs
+{
+  const fontFile = ['/System/Library/Fonts/Supplemental/Arial Bold.ttf', '/System/Library/Fonts/Supplemental/Arial.ttf'].find(f => fs.existsSync(f));
+  if (fontFile) {
+    const job = C.newJob('Example — V-carved sign', { width: 200, length: 100, thickness: 13 });
+    job.material = 'hardwood'; job.tools = library.map(t => ({ ...t }));
+    job.notes = 'Text outlined from a system font, V-carved with #302 60° (depth cap 4 mm, flat clearing with #102), plaque cut out with #201 and tabs.';
+    const font = C.loadFont(fontFile, fs.readFileSync(fontFile).buffer.slice(0));
+    const loops = C.textToPolylines(font, { text: 'COOL CAM', size: 28, x: 100, y: 40, align: 'center' });
+    const params = { kind: 'text', text: 'COOL CAM', font: path.basename(fontFile).replace(/\.(ttf|otf)$/i, ''), size: 28, x: 100, y: 40, align: 'center' };
+    job.shapes = [...loops.map((pl, i) => ({ id: `sign_${i + 1}`, name: `COOL CAM ${i + 1}`, polyline: pl, params, group: 'sign' })), { id: 'plaque', name: 'plaque', polyline: C.rect(15, 15, 170, 70, 10), params: { kind: 'rect', x: 15, y: 15, w: 170, h: 70, r: 10 } }];
+    job.ops = [
+      { id: 'carve', name: 'V-carve lettering', type: 'vcarve', toolId: 't302', shapeIds: loops.map((_, i) => `sign_${i + 1}`), depth: 4, stepover: 0.4, flatToolId: 't102', ...feeds(job, 't302') },
+      { id: 'cutout', name: 'Cut out plaque', type: 'profile', toolId: 't201', shapeIds: ['plaque'], side: 'outside', depth: 13, depthPerPass: 4, entry: 'ramp', tabs: { count: 4, width: 8, height: 2.5 }, ...feeds(job, 't201') },
+    ];
+    const tps = C.generateToolpaths(job); const sim = simulate(job, tps, { resolution: 0.3 }); const post = postGrbl(job, tps);
+    fs.writeFileSync(path.join(jobsDir, 'example-sign.json'), JSON.stringify(job, null, 1)); fs.writeFileSync(path.join(jobsDir, 'example-sign.nc'), post.gcode);
+    const errors = sim.events.filter(e => e.severity === 'error');
+    console.log(`example-sign: ${tps.map(t => `${t.opName} ${t.moves.length}`).join(', ')} · est ${C.formatDuration(post.seconds)} · ${post.arcs} arcs · sim ${errors.length ? errors.length + ' ERRORS' : 'clean'}`, tps.flatMap(t => t.warnings));
+  }
+}

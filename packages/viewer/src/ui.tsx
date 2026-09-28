@@ -10,6 +10,8 @@ export type ModalState =
   | { kind: 'addShape' }
   | { kind: 'transform' }
   | { kind: 'tools' }
+  | { kind: 'text' }
+  | { kind: 'heightmap'; file: File }
   | { kind: 'open' }
   | { kind: 'prompt'; title: string; label: string; initial?: string; onSubmit: (v: string) => void }
   | { kind: 'confirm'; title: string; message: string; onConfirm: () => void };
@@ -18,6 +20,9 @@ export interface Ui {
   files: { name: string; mtime: number }[]; file: string; setFile: (f: string) => void;
   job: Job | null; setJob: (u: JobUpdater | Job) => void; createJob: (name: string) => void; saveAs: (name: string) => void; reload: () => void;
   derived: Derived | null; error: string | null; saving: boolean;
+  undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean;
+  /** What the Parameters panel shows: the active operation or the selected shapes. */
+  paramsMode: 'op' | 'shape'; setParamsMode: (m: 'op' | 'shape') => void;
   selectedShapes: string[]; setSelectedShapes: Dispatch<SetStateAction<string[]>>; pickShape: (id: string | null, multi: boolean) => void;
   activeOp: string | null; setActiveOp: (id: string | null) => void;
   selectedModel: string | null; setSelectedModel: (id: string | null) => void;
@@ -34,6 +39,8 @@ export interface Ui {
   tabEdit: boolean; setTabEdit: (v: boolean) => void;
   modal: ModalState | null; openModal: (m: ModalState) => void; closeModal: () => void;
   library: Tool[]; saveLibrary: (tools: Tool[]) => void;
+  /** Font names available from the dev server (/api/fonts). */
+  fonts: string[];
 }
 
 const Ctx = createContext<Ui | null>(null);
@@ -45,6 +52,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const [selectedShapes, setSelectedShapes] = useState<string[]>([]);
   const [activeOp, setActiveOp] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [paramsMode, setParamsMode] = useState<'op' | 'shape'>('op');
   const [showPaths, setShowPaths] = useState(true);
   const [showStock, setShowStock] = useState(true);
   const [showModels, setShowModels] = useState(true);
@@ -55,10 +63,12 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const [sceneReady, setSceneReady] = useState(0);
   const [modal, setModal] = useState<ModalState | null>(null);
   const [library, setLibrary] = useState<Tool[]>(DEFAULT_TOOLS);
+  const [fonts, setFonts] = useState<string[]>([]);
   const sceneRef = useRef<SceneController | null>(null);
   const dockRef = useRef<DockviewApi | null>(null);
   const [tabEdit, setTabEdit] = useState(false);
 
+  useEffect(() => { fetch('/api/fonts').then(r => r.json()).then((f: string[]) => Array.isArray(f) && setFonts(f)).catch(() => {}); }, []);
   useEffect(() => { fetch('/api/tools').then(r => r.json()).then((t: Tool[]) => { if (Array.isArray(t) && t.length) setLibrary(t); }).catch(() => {}); }, []);
   const saveLibrary = useCallback((tools: Tool[]) => { setLibrary(tools); fetch('/api/tools', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(tools) }).catch(() => {}); }, []);
 
@@ -69,18 +79,20 @@ export function UiProvider({ children }: { children: ReactNode }) {
 
   const pickShape = useCallback((id: string | null, multi: boolean) => {
     setSelectedShapes(prev => id === null ? (multi ? prev : []) : multi ? (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) : [id]);
+    if (id !== null) setParamsMode('shape');
   }, []);
+  const setActiveOpAndMode = useCallback((id: string | null) => { setActiveOp(id); if (id) setParamsMode('op'); }, []);
 
   const createJob = useCallback((name: string) => { const j = newJob(name); j.tools = library.map(t => ({ ...t })); store.createJob(j); setSelectedShapes([]); setActiveOp(null); }, [library, store]);
 
   const value: Ui = useMemo(() => ({
     files: store.files, file: store.file, setFile: store.setFile, job: store.job, setJob: store.setJob, createJob, saveAs: store.saveAs, reload: store.reload,
-    derived: store.derived, error: store.error, saving: store.saving,
-    selectedShapes, setSelectedShapes, pickShape, activeOp, setActiveOp, selectedModel, setSelectedModel,
+    derived: store.derived, error: store.error, saving: store.saving, undo: store.undo, redo: store.redo, canUndo: store.canUndo, canRedo: store.canRedo, paramsMode, setParamsMode,
+    selectedShapes, setSelectedShapes, pickShape, activeOp, setActiveOp: setActiveOpAndMode, selectedModel, setSelectedModel,
     ...simState,
     showPaths, setShowPaths, showStock, setShowStock, showModels, setShowModels, showShapes, setShowShapes, xray, setXray, viewCube, setViewCube, ortho, setOrtho, sceneRef, sceneReady, setSceneReady, dockRef, tabEdit, setTabEdit,
-    modal, openModal: setModal, closeModal: () => setModal(null), library, saveLibrary,
-  }), [store, simState, selectedShapes, pickShape, activeOp, selectedModel, showPaths, showStock, showModels, showShapes, xray, viewCube, ortho, sceneReady, modal, library, saveLibrary, createJob, tabEdit]);
+    modal, openModal: setModal, closeModal: () => setModal(null), library, saveLibrary, fonts,
+  }), [store, simState, selectedShapes, pickShape, activeOp, setActiveOpAndMode, selectedModel, paramsMode, showPaths, showStock, showModels, showShapes, xray, viewCube, ortho, sceneReady, modal, library, saveLibrary, createJob, tabEdit, fonts]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

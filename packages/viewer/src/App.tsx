@@ -11,11 +11,13 @@ import { OpsPanel } from './panels/OpsPanel';
 import { OutputPanel } from './panels/OutputPanel';
 import { OpEditPanel } from './panels/OpEditPanel';
 import { ModelsPanel } from './panels/ModelsPanel';
+import { TextModal } from './modals/TextModal';
+import { HeightmapModal } from './modals/HeightmapModal';
 import { AddShapeModal } from './modals/AddShapeModal';
 import { TransformModal } from './modals/TransformModal';
 import { ToolLibraryModal } from './modals/ToolLibraryModal';
 import { PromptModal, ConfirmModal, OpenJobModal } from './modals/SmallModals';
-import { addOperation, deleteShapes, downloadGcode, duplicateShapes, importFile, importModelFile, syncToolsFromLibrary } from './actions';
+import { addOperation, deleteShapes, downloadGcode, duplicateShapes, importFile, importModelFile, syncToolsFromLibrary, openShapeParams, booleanShapes, offsetShapes } from './actions';
 import { PANELS, applyConstraints, defaultLayout, deleteLayout, floatPanel, loadLayout, persistCurrent, restoreCurrent, saveLayout, savedLayouts, showPanel } from './layout';
 
 const components = { viewport: Viewport, job: JobPanel, shapes: ShapesPanel, models: ModelsPanel, ops: OpsPanel, opedit: OpEditPanel, output: OutputPanel };
@@ -28,6 +30,7 @@ function Shell() {
   const apiRef = useRef<DockviewApi | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const modelInput = useRef<HTMLInputElement>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
   const [layoutTick, setLayoutTick] = useState(0);
 
   const onReady = useCallback((e: DockviewReadyEvent) => {
@@ -45,6 +48,7 @@ function Shell() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName; if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || ui.modal) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) ui.redo(); else ui.undo(); return; }
       if (e.code === 'Space' || e.key === ' ') { e.preventDefault(); ui.setViewCube(v => !v); }
       else if (e.key === 'Escape') { ui.setViewCube(false); ui.setTabEdit(false); }
     };
@@ -63,11 +67,21 @@ function Shell() {
       'sep',
       { label: 'Import DXF / SVG…', onClick: () => fileInput.current?.click() },
       { label: 'Import 3D model (STL / OBJ)…', onClick: () => modelInput.current?.click() },
+      { label: 'Import image as relief…', disabled: !ui.job, onClick: () => imageInput.current?.click() },
       { label: 'Export G-code (.nc)', disabled: !ui.derived?.toolpaths.some(t => t.moves.length), onClick: () => downloadGcode(ui) },
     ] },
     { label: 'Edit', items: [
+      { label: 'Undo', shortcut: '⌘Z', disabled: !ui.canUndo, onClick: ui.undo },
+      { label: 'Redo', shortcut: '⇧⌘Z', disabled: !ui.canRedo, onClick: ui.redo },
+      'sep',
       { label: 'Add shape…', disabled: !ui.job, onClick: () => ui.openModal({ kind: 'addShape' }) },
+      { label: 'Add text…', disabled: !ui.job, onClick: () => ui.openModal({ kind: 'text' }) },
+      { label: 'Edit shape parameters', disabled: !ui.selectedShapes.length, onClick: () => openShapeParams(ui, ui.selectedShapes) },
       { label: 'Transform…', disabled: !ui.job?.shapes.length, onClick: () => ui.openModal({ kind: 'transform' }) },
+      { label: 'Union', disabled: ui.selectedShapes.length < 2, onClick: () => booleanShapes(ui, 'union') },
+      { label: 'Subtract (first − rest)', disabled: ui.selectedShapes.length < 2, onClick: () => booleanShapes(ui, 'subtract') },
+      { label: 'Intersect', disabled: ui.selectedShapes.length < 2, onClick: () => booleanShapes(ui, 'intersect') },
+      { label: 'Offset…', disabled: !ui.selectedShapes.length, onClick: () => ui.openModal({ kind: 'prompt', title: 'Offset selected shapes', label: 'mm', initial: '1', onSubmit: v => offsetShapes(ui, parseFloat(v)) }) },
       { label: 'Duplicate shapes', disabled: !ui.selectedShapes.length, onClick: () => duplicateShapes(ui) },
       { label: 'Delete shapes', disabled: !ui.selectedShapes.length, onClick: () => deleteShapes(ui) },
       'sep',
@@ -78,6 +92,8 @@ function Shell() {
       { label: 'Add pocket', disabled: !ui.job, onClick: () => addOperation(ui, 'pocket') },
       { label: 'Add profile', disabled: !ui.job, onClick: () => addOperation(ui, 'profile') },
       { label: 'Add drill', disabled: !ui.job, onClick: () => addOperation(ui, 'drill') },
+      { label: 'Add V-carve', disabled: !ui.job, onClick: () => addOperation(ui, 'vcarve') },
+      { label: 'Add keyhole', disabled: !ui.job, onClick: () => addOperation(ui, 'keyhole') },
       { label: 'Add 3D rough', disabled: !ui.job?.models?.length, onClick: () => addOperation(ui, 'rough3d') },
       { label: 'Add 3D finish', disabled: !ui.job?.models?.length, onClick: () => addOperation(ui, 'finish3d') },
       'sep',
@@ -114,16 +130,19 @@ function Shell() {
       <MenuBar menus={menus} right={<span className="stat muted">{ui.error ? <span className="err">{ui.error} </span> : null}{ui.saving ? 'saving…' : ui.job ? `${ui.job.name} · ${ui.file}` : 'no job'}</span>} />
       <input ref={fileInput} type="file" accept=".dxf,.svg" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importFile(ui, f); e.target.value = ''; }} />
       <input ref={modelInput} type="file" accept=".stl,.obj" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importModelFile(ui, f); e.target.value = ''; }} />
+      <input ref={imageInput} type="file" accept="image/png,image/jpeg" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) ui.openModal({ kind: 'heightmap', file: f }); e.target.value = ''; }} />
       <div className="dock" onDragOver={e => e.preventDefault()} onDrop={async e => { const f = e.dataTransfer.files[0]; if (!f) return; e.preventDefault(); if (f.name.endsWith('.json')) ui.setJob(JSON.parse(await f.text())); else if (/\.(stl|obj)$/i.test(f.name)) importModelFile(ui, f); else importFile(ui, f); }}>
         <DockviewReact components={components} tabComponents={tabComponents} onReady={onReady} theme={themeDark} getTabContextMenuItems={() => ['float', 'maximize', 'separator', 'close']} />
         {ui.modal?.kind === 'addShape' && <AddShapeModal />}
         {ui.modal?.kind === 'transform' && <TransformModal />}
         {ui.modal?.kind === 'tools' && <ToolLibraryModal />}
+        {ui.modal?.kind === 'text' && <TextModal />}
+        {ui.modal?.kind === 'heightmap' && <HeightmapModal file={ui.modal.file} />}
         {ui.modal?.kind === 'open' && <OpenJobModal />}
         {ui.modal?.kind === 'prompt' && <PromptModal title={ui.modal.title} label={ui.modal.label} initial={ui.modal.initial} onSubmit={ui.modal.onSubmit} />}
         {ui.modal?.kind === 'confirm' && <ConfirmModal title={ui.modal.title} message={ui.modal.message} onConfirm={ui.modal.onConfirm} />}
       </div>
-      <Timeline total={ui.total} progress={ui.progress} setProgress={ui.setProgress} playing={ui.playing} setPlaying={ui.setPlaying} speed={ui.speed} setSpeed={ui.setSpeed} seconds={ui.seconds} totalSeconds={ui.totalSeconds} />
+      <Timeline />
     </div>
   );
 }

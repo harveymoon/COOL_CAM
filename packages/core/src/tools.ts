@@ -1,4 +1,4 @@
-export type ToolType = 'endmill' | 'ballnose' | 'vbit' | 'drill';
+export type ToolType = 'endmill' | 'ballnose' | 'vbit' | 'drill' | 'keyhole';
 
 export interface Tool {
   id: string;
@@ -13,6 +13,8 @@ export interface Tool {
   fluteLength?: number;
   /** Included tip angle in degrees (V-bits, drills). */
   tipAngle?: number;
+  /** Neck/shank diameter above the head (keyhole cutters). */
+  shankDiameter?: number;
   /** Default spindle speed, feed and plunge (rpm, mm/min). Ops can override. */
   rpm?: number;
   feed?: number;

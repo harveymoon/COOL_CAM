@@ -37,6 +37,10 @@ export interface ProfileOp extends OpBase {
   stockToLeave?: number;
   /** Lead-in/out arc radius in mm (0 = none). */
   leadRadius?: number;
+  /** How each pass starts: straight plunge (default) or a ramp along the contour. */
+  entry?: 'plunge' | 'ramp';
+  /** Ramp angle in degrees (default 5). */
+  rampAngle?: number;
 }
 
 export interface PocketOp extends OpBase {
@@ -48,6 +52,28 @@ export interface PocketOp extends OpBase {
   stockToLeave?: number;
   /** Add a final wall pass at zero stock-to-leave after each depth. */
   finishPass?: boolean;
+  /** Rest machining: only cut what this earlier (larger) tool could not reach. */
+  restToolId?: string;
+}
+
+/** V-carve closed regions with a V-bit: the groove walls follow the region outline, depth grows with width. */
+export interface VCarveOp extends OpBase {
+  type: 'vcarve';
+  /** Distance between successive offset passes, mm (default 0.4). */
+  stepover?: number;
+  /** Optional flat-area clearing endmill (advanced V-carve): areas wider than the V reach are pocketed at `depth`. */
+  flatToolId?: string;
+  /** Stepover for the flat clearing tool, mm. */
+  flatStepover?: number;
+}
+
+/** Keyhole slots for hanging: plunge at the shape (or the start of a 2-point line), cut a slot of `length` at `angle`, come back and retract. */
+export interface KeyholeOp extends OpBase {
+  type: 'keyhole';
+  /** Slot length in mm (default 20). */
+  length?: number;
+  /** Slot direction in degrees (0 = +X, 90 = +Y; default 90). Ignored for 2-point line shapes. */
+  angle?: number;
 }
 
 export interface DrillOp extends OpBase {
@@ -100,4 +126,4 @@ export interface Finish3DOp extends OpBase {
   finishFloor?: boolean;
 }
 
-export type Op = ProfileOp | PocketOp | DrillOp | Rough3DOp | Finish3DOp;
+export type Op = ProfileOp | PocketOp | DrillOp | Rough3DOp | Finish3DOp | VCarveOp | KeyholeOp;

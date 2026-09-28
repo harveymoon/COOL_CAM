@@ -55,6 +55,20 @@ The viewer is a full editor sharing the same job file with the MCP server (edits
 - **Stock texture**: the simulated stock is textured by material (wood grain, brushed metal, MDF speckle, plastics); cut floors tint warmer with depth so pockets read against the grain. Through-cuts open real holes onto a dark spoilboard drawn under the stock.
 - Timeline: scrub or play the cut; clicking an operation jumps to the end of that operation.
 
+### Lettering, V-carve, keyhole, relief images
+
+- **Text**: Edit → Add text (or `add_text` / `list_fonts` over MCP) outlines a string with any TTF/OTF on this Mac into closed shapes; counters become holes. Text shapes stay editable in the Parameters panel (string, font, size, position, alignment, spacing).
+- **V-carve**: a V-bit follows successive inward offsets of a region, tip depth = offset / tan(half angle), so the groove walls sit exactly on the outline. Depth cap optional; with a *flat clearing* endmill the wide areas are pocketed flat at the cap first (advanced V-carve), emitted as a separate toolpath for that tool.
+- **Keyhole**: plunge, slide the slot length at the given angle, return, retract. Add a `keyhole` tool (head + shank diameter) in the tool library.
+- **Contour ramp**: profiles can enter with a ramp along the contour instead of a plunge (never through a tab).
+- **Rest machining**: a pocket with *rest of* set to a larger tool only cuts what that tool could not reach.
+- **Image → relief**: File → Import image as relief (or `import_heightmap_image`) turns a PNG/JPEG into a solid relief model (white = high), ready for 3D rough/finish.
+- **Arcs**: the post fits G2/G3 arcs over circular runs (0.01 mm tolerance), typically shrinking files 3× on round parts. `arcs: false` disables it.
+
+### Editing
+
+The **Parameters** panel shows either the active operation or the selected shapes. Shape mode has absolute position (min corner and centre), size, primitive parameters for rectangles, circles, polygons, slots and text, relative transforms, mirror, offset, and booleans (union, subtract, intersect). Undo/redo is ⌘Z / ⇧⌘Z. The timeline shows one segment per operation coloured by tool, with tool-change ticks and hover details; click a segment to jump to the end of that operation.
+
 ### 3D models
 
 Import an STL or OBJ (File → Import 3D model, the Models panel, or `import_model` over MCP). The model is centred on the stock with its top at Z0; the Models panel has placement fields and snap buttons (centre, corner, top at Z0, bottom on bed, × 25.4 for inch files, fit stock). Then:

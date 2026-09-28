@@ -5,11 +5,22 @@ import type { Model } from './mesh.js';
 import { DEFAULT_TOOLS } from './tools.js';
 import { SHAPEOKO_HDM } from './machine.js';
 
+/** Parameters a primitive shape was built from, so it stays editable. Cleared when the shape is rotated, scaled or edited freeform. */
+export type ShapeParams =
+  | { kind: 'rect'; x: number; y: number; w: number; h: number; r: number }
+  | { kind: 'circle'; cx: number; cy: number; d: number }
+  | { kind: 'regular_polygon'; cx: number; cy: number; sides: number; d: number; rot: number }
+  | { kind: 'slot'; x1: number; y1: number; x2: number; y2: number; w: number }
+  | { kind: 'text'; text: string; font: string; size: number; x: number; y: number; align: 'left' | 'center' | 'right'; spacing?: number };
+
 export interface Shape {
   id: string;
   name?: string;
   polyline: Polyline;
   layer?: string;
+  params?: ShapeParams;
+  /** Text shapes produce several loops; siblings share a group id so they move together. */
+  group?: string;
 }
 
 export interface Stock {

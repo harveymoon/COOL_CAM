@@ -175,7 +175,8 @@ button.mini { padding: 1px 6px; font-size: 11px; }
 .view-tools .sep { width: 1px; height: 14px; background: var(--border); margin: 0 4px; }
 
 /* panels scroll horizontally instead of squishing below their natural width */
-.panel-body { min-width: 260px; overflow: auto; }
+/* below this width the forms would jumble; dockview keeps groups at least this wide (layout.ts MIN_PANEL_WIDTH) and the body scrolls sideways if it ever ends up narrower (e.g. a very small window) */
+.panel-body { min-width: 300px; overflow: auto; }
 .dv-content-container { overflow: auto; }
 /* timeline with operation segments */
 .timeline { gap: 8px; }

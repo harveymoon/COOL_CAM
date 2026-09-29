@@ -39,7 +39,28 @@ export function saveLayout(api: DockviewApi, name: string) { const all = savedLa
 export function deleteLayout(name: string) { const all = savedLayouts(); delete all[name]; localStorage.setItem(KEY_SAVED, JSON.stringify(all)); }
 export function loadLayout(api: DockviewApi, name: string): boolean { const l = savedLayouts()[name]; if (!l) return false; try { api.fromJSON(l); return true; } catch { return false; } }
 
-/** Keep panels from squishing: side panels get a sensible minimum width, the viewport a bit more. */
+/** Narrowest a panel may be dragged before its forms and lists start to jumble (matches `.panel-body { min-width }`). */
+export const MIN_PANEL_WIDTH = 320;
+export const MIN_VIEWPORT_WIDTH = 400;
+/**
+ * Keep panels from squishing. Constraints live on dockview *groups*, so they are (re)applied to every group whenever the
+ * layout changes: a panel dragged into a new group takes its minimum along, and floating groups get one too.
+ */
+const applied = new WeakMap<object, string>();
+let applying = false;
 export function applyConstraints(api: DockviewApi) {
-  for (const p of api.panels) { p.api.setConstraints({ minimumWidth: p.id === 'viewport' ? 320 : 280, minimumHeight: 120 }); if (PANELS[p.id] && p.title !== PANELS[p.id]) p.api.setTitle(PANELS[p.id]); }
+  // setConstraints itself raises a layout-change event, so this must be re-entrancy safe and only touch groups whose
+  // constraints actually change (otherwise the layout-change handler and this function call each other forever)
+  if (applying) return;
+  applying = true;
+  try {
+    for (const p of api.panels) { if (PANELS[p.id] && p.title !== PANELS[p.id]) p.api.setTitle(PANELS[p.id]); }
+    for (const g of api.groups) {
+      const ids = g.panels.map(p => p.id);
+      const minimumWidth = ids.includes('viewport') ? MIN_VIEWPORT_WIDTH : ids.length ? MIN_PANEL_WIDTH : 0;
+      const key = `${minimumWidth}`;
+      if (applied.get(g) === key) continue;
+      try { g.api.setConstraints({ minimumWidth, minimumHeight: 140 }); applied.set(g, key); } catch { /* group being disposed */ }
+    }
+  } finally { applying = false; }
 }

@@ -37,12 +37,14 @@ function Shell() {
 
   const onReady = useCallback((e: DockviewReadyEvent) => {
     apiRef.current = e.api; ui.dockRef.current = e.api;
+    if (import.meta.env.DEV) (window as unknown as { __dock?: DockviewApi }).__dock = e.api;
     if (!restoreCurrent(e.api)) defaultLayout(e.api);
     else if (!e.api.getPanel('models')) { showPanel(e.api, 'models'); e.api.getPanel('shapes')?.api.setActive(); }
     applyConstraints(e.api);
     e.api.onDidAddPanel(() => applyConstraints(e.api));
     let t: number | null = null;
-    e.api.onDidLayoutChange(() => { if (t) window.clearTimeout(t); t = window.setTimeout(() => { persistCurrent(e.api); setLayoutTick(x => x + 1); }, 200); });
+    e.api.onDidLayoutChange(() => { if (t) window.clearTimeout(t); t = window.setTimeout(() => { applyConstraints(e.api); persistCurrent(e.api); setLayoutTick(x => x + 1); }, 200); });
+    e.api.onDidAddGroup(() => applyConstraints(e.api));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

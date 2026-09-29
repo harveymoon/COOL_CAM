@@ -20,6 +20,8 @@ export interface Ui {
   files: { name: string; mtime: number }[]; file: string; setFile: (f: string) => void;
   job: Job | null; setJob: (u: JobUpdater | Job) => void; createJob: (name: string) => void; saveAs: (name: string) => void; reload: () => void;
   derived: Derived | null; error: string | null; saving: boolean;
+  /** True while toolpaths are being regenerated on the worker (the shown toolpaths are the previous result). */
+  generating: boolean;
   undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean;
   /** What the Parameters panel shows: the active operation or the selected shapes. */
   paramsMode: 'op' | 'shape'; setParamsMode: (m: 'op' | 'shape') => void;
@@ -87,7 +89,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
 
   const value: Ui = useMemo(() => ({
     files: store.files, file: store.file, setFile: store.setFile, job: store.job, setJob: store.setJob, createJob, saveAs: store.saveAs, reload: store.reload,
-    derived: store.derived, error: store.error, saving: store.saving, undo: store.undo, redo: store.redo, canUndo: store.canUndo, canRedo: store.canRedo, paramsMode, setParamsMode,
+    derived: store.derived, generating: store.generating, error: store.error, saving: store.saving, undo: store.undo, redo: store.redo, canUndo: store.canUndo, canRedo: store.canRedo, paramsMode, setParamsMode,
     selectedShapes, setSelectedShapes, pickShape, activeOp, setActiveOp: setActiveOpAndMode, selectedModel, setSelectedModel,
     ...simState,
     showPaths, setShowPaths, showStock, setShowStock, showModels, setShowModels, showShapes, setShowShapes, xray, setXray, viewCube, setViewCube, ortho, setOrtho, sceneRef, sceneReady, setSceneReady, dockRef, tabEdit, setTabEdit,

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { generateToolpaths, estimate, MACHINES, SHAPEOKO_HDM, newJob } from '@cool-cam/core';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { newJob } from '@cool-cam/core';
 import type { Job, Toolpath, ToolpathStats } from '@cool-cam/core';
-import { postGrbl } from '@cool-cam/post';
+import type { GenResponse } from './gen.worker';
 
 export interface Derived {
   toolpaths: Toolpath[];
@@ -10,6 +10,10 @@ export interface Derived {
   totalSeconds: number;
   /** Cheap signature of the toolpaths, used to decide when the simulation must rerun. */
   signature: string;
+  /** Post-processor warnings (spindle range, feeds above the machine maximum, ...). */
+  postWarnings: string[];
+  /** Generation time on the worker, ms. */
+  ms: number;
 }
 
 export type JobUpdater = (job: Job) => Job;
@@ -87,21 +91,34 @@ export function useJobStore() {
     setJobState(prev => { if (!prev) return prev; const next = { ...prev, name }; const f = `${slug(name)}.json`; setFile(f); persist(next, f); return next; });
   }, [persist]);
 
-  const derived: Derived | null = useMemo(() => {
-    if (!job) return null;
-    const machine = MACHINES[job.machineId] ?? SHAPEOKO_HDM;
-    const toolpaths = generateToolpaths(job);
-    const stats = toolpaths.map(tp => estimate(tp, machine));
-    const post = postGrbl(job, toolpaths);
-    // the signature must change whenever the simulation would: stock, tool geometry (footprints), and every move incl. feeds (timeline)
-    let sig = `${job.stock.width}x${job.stock.length}x${job.stock.thickness}:${job.stock.origin}:${job.stock.zOrigin}:${job.safeZ}`;
-    for (const t of job.tools) sig += `|${t.id}:${t.type}:${t.diameter}:${t.tipAngle ?? ''}:${t.flutes}`;
-    for (const tp of toolpaths) {
-      let h = 0; for (const m of tp.moves) { h = (h * 31 + Math.round(m.x * 1000)) | 0; h = (h * 31 + Math.round(m.y * 1000)) | 0; h = (h * 31 + Math.round(m.z * 1000)) | 0; h = (h * 31 + Math.round(m.f ?? 0) + (m.kind === 'rapid' ? 7 : m.kind === 'retract' ? 11 : 0)) | 0; }
-      sig += `|${tp.opId}:${tp.toolId}:${tp.moves.length}:${h}`;
-    }
-    return { toolpaths, stats, gcode: post.gcode, totalSeconds: post.seconds, signature: sig };
+  // Toolpaths are generated on a worker so the UI never freezes on a big job. A new edit while a generation is running
+  // terminates that worker (cancellation) and starts a fresh one after a short debounce, so typing in a field costs one
+  // generation, not one per keystroke. The previous result stays on screen until the new one arrives.
+  const [derived, setDerived] = useState<Derived | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const genWorker = useRef<Worker | null>(null);
+  const genId = useRef(0);
+  const genTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (genTimer.current) window.clearTimeout(genTimer.current);
+    if (!job) { setDerived(null); setGenerating(false); genWorker.current?.terminate(); genWorker.current = null; return; }
+    genTimer.current = window.setTimeout(() => {
+      genWorker.current?.terminate();
+      const w = new Worker(new URL('./gen.worker.ts', import.meta.url), { type: 'module' });
+      genWorker.current = w;
+      const id = ++genId.current; setGenerating(true);
+      w.onmessage = (ev: MessageEvent<GenResponse>) => {
+        const msg = ev.data; if (msg.id !== id) return;
+        if (msg.type === 'done') { const { type: _t, id: _i, ...rest } = msg; void _t; void _i; setDerived(rest); setError(null); }
+        else setError(`generation failed: ${msg.message}`);
+        setGenerating(false);
+      };
+      w.onerror = e => { setError(`generation failed: ${e.message}`); setGenerating(false); };
+      w.postMessage({ type: 'generate', id, job });
+    }, 120);
+    return () => { if (genTimer.current) window.clearTimeout(genTimer.current); };
   }, [job]);
+  useEffect(() => () => genWorker.current?.terminate(), []);
 
-  return { files, file, setFile, job, setJob, createJob, saveAs, derived, error, saving, reload: () => { dirty.current = false; load(file); }, undo, redo, canUndo: past.current.length > 0, canRedo: future.current.length > 0, histTick };
+  return { files, file, setFile, job, setJob, createJob, saveAs, derived, generating, error, saving, reload: () => { dirty.current = false; load(file); }, undo, redo, canUndo: past.current.length > 0, canRedo: future.current.length > 0, histTick };
 }

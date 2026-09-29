@@ -9,7 +9,7 @@ export function OutputPanel() {
   const [showGcode, setShowGcode] = useState(false);
   if (!job) return <div className="empty">No job.</div>;
   const gcode = derived?.gcode ?? '';
-  const warnings = derived?.toolpaths.flatMap(tp => tp.warnings.map(w => ({ op: tp.opName, w }))) ?? [];
+  const warnings = [...(derived?.toolpaths.flatMap(tp => tp.warnings.map(w => ({ op: tp.opName, w }))) ?? []), ...(derived?.postWarnings ?? []).map(w => ({ op: 'post', w }))];
   const events = sim?.summary.events ?? [];
   const errors = events.filter(e => e.severity === 'error').length;
   return (

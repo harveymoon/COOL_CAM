@@ -29,23 +29,23 @@ export function ShapeParams() {
 
       <div className="op-section">
         <div className="op-section-title">Position</div>
-        <div className="grid4">
+        <div className="grid2">
           <Num label="center X" value={r2(cx)} step={1} onChange={v => v !== undefined && transformShapes(ui, { dx: v - cx })} />
           <Num label="center Y" value={r2(cy)} step={1} onChange={v => v !== undefined && transformShapes(ui, { dy: v - cy })} />
-          <div className="row" style={{ gridColumn: 'span 2', alignSelf: 'end' }}><span className="lbl">&nbsp;</span><span className="btns" style={{ marginTop: 0 }}>
-            <button onClick={() => transformShapes(ui, { dx: (sb.x0 + sb.x1) / 2 - cx, dy: (sb.y0 + sb.y1) / 2 - cy })}>Center on stock</button>
-            <button onClick={() => transformShapes(ui, { mirrorX: true })}>Mirror X</button>
-            <button onClick={() => transformShapes(ui, { mirrorY: true })}>Mirror Y</button>
-          </span></div>
+        </div>
+        <div className="btns">
+          <button onClick={() => transformShapes(ui, { dx: (sb.x0 + sb.x1) / 2 - cx, dy: (sb.y0 + sb.y1) / 2 - cy })}>Center on stock</button>
+          <button onClick={() => transformShapes(ui, { mirrorX: true })}>Mirror X</button>
+          <button onClick={() => transformShapes(ui, { mirrorY: true })}>Mirror Y</button>
         </div>
       </div>
 
       <div className="op-section">
         <div className="op-section-title">Scale</div>
         <div className="grid4 wh-row">
-          <Num label="width" value={r2(w)} step={1} hint={linked ? 'scales about the center, keeping the aspect ratio' : 'scales X only, about the center'} onChange={v => v && w > 0 && transformShapes(ui, linked ? { scale: v / w } : { scaleX: v / w })} />
+          <Num label="width" value={r2(w)} step={1} hint={linked ? 'scales about the center, keeping the aspect ratio' : 'scales X only, about the center'} onChange={v => v !== undefined && v > 0 && w > 0 && transformShapes(ui, linked ? { scale: v / w } : { scaleX: v / w })} />
           <button className={`link-toggle${linked ? ' on' : ''}`} onClick={toggleLinked} title={linked ? 'Width and height are linked (aspect ratio kept). Click to size them independently.' : 'Width and height are independent. Click to link them.'}>{linked ? '⚭' : '⚬'}</button>
-          <Num label="height" value={r2(h)} step={1} hint={linked ? 'scales about the center, keeping the aspect ratio' : 'scales Y only, about the center'} onChange={v => v && h > 0 && transformShapes(ui, linked ? { scale: v / h } : { scaleY: v / h })} />
+          <Num label="height" value={r2(h)} step={1} hint={linked ? 'scales about the center, keeping the aspect ratio' : 'scales Y only, about the center'} onChange={v => v !== undefined && v > 0 && h > 0 && transformShapes(ui, linked ? { scale: v / h } : { scaleY: v / h })} />
           <div className="row"><span className="lbl">area · length</span><span className="mono">{single?.polyline.closed ? Math.round(Math.abs(signedArea(single.polyline))) : '—'} · {single ? Math.round(perimeter(single.polyline)) : '—'}</span></div>
         </div>
       </div>

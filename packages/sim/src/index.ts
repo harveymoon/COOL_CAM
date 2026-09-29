@@ -107,12 +107,15 @@ export class StockSim {
   /** Material standing just outside the cutter, measured from the tool tip (mm): taller than the flutes means the shank is in the stock. */
   private lastWall = 0;
 
-  /** Tallest column of material above the tool's cutting surface at (x,y,z) over the inner footprint, without cutting (mm). */
+  /**
+   * Tallest column of material above the tool's cutting surface at (x,y,z), without cutting (mm). Only cells more than a
+   * quarter diameter inside the rim count: a plunge beside a wall skin (a finishing profile) must not read as a deep plunge.
+   */
   private columnAbove(fp: Footprint, x: number, y: number, z: number): number {
     const ci = Math.round((x - this.x0) / this.res), cj = Math.round((y - this.y0) / this.res);
-    let eng = 0; const H = this.heights; const w = this.w, h = this.h;
+    let eng = 0; const H = this.heights; const w = this.w, h = this.h; const bulkR = fp.radius * 0.5;
     for (let k = 0; k < fp.count; k++) {
-      if (!fp.inner[k]) continue;
+      if (!fp.inner[k] || Math.hypot(fp.dx[k] * this.res, fp.dy[k] * this.res) > bulkR) continue;
       const i = ci + fp.dx[k], j = cj + fp.dy[k];
       if (i < 0 || j < 0 || i >= w || j >= h) continue;
       const e = H[j * w + i] - (z + fp.dz[k]); if (e > eng) eng = e;

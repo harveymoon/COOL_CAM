@@ -17,6 +17,8 @@ examples/  sample drawings
 
 ## Quick start
 
+**Just want the app?** Download the latest macOS build from [Releases](https://github.com/harveymoon/COOL_CAM/releases). It is not code-signed yet: on first launch right-click → Open.
+
 ```bash
 npm install
 npm run build          # builds core, post, sim, mcp

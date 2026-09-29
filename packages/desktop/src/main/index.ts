@@ -23,6 +23,8 @@ let logFile = '';
 function setupLogging() {
   if (!app.isPackaged) return;
   try {
+    // the package is named @cool-cam/desktop; log under the product name instead (~/Library/Logs/Cool CAM on macOS)
+    if (process.platform === 'darwin') app.setAppLogsPath(path.join(app.getPath('home'), 'Library', 'Logs', 'Cool CAM'));
     const dir = app.getPath('logs'); fs.mkdirSync(dir, { recursive: true }); logFile = path.join(dir, 'main.log');
     const out = fs.createWriteStream(logFile, { flags: 'a' });
     const wrap = (orig: (...a: unknown[]) => void, level: string) => (...a: unknown[]) => { orig(...a); try { out.write(`${new Date().toISOString()} ${level} ${a.map(x => x instanceof Error ? x.stack ?? x.message : typeof x === 'string' ? x : JSON.stringify(x)).join(' ')}\n`); } catch { /* ignore */ } };

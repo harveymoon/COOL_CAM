@@ -16,7 +16,7 @@
     "start": "node packages/server/dist/cli.js",
     "dev:desktop": "npm run build -w @cool-cam/mcp && npm run dev -w @cool-cam/desktop",
     "build:desktop": "npm run build && npm run dist -w @cool-cam/desktop",
-    "install:desktop": "rsync -a --delete \"packages/desktop/dist/mac-universal/Cool CAM.app/\" \"$HOME/Applications/Cool CAM.app/\" && echo \"installed to ~/Applications/Cool CAM.app\""
+    "install:desktop": "if pgrep -f \"Applications/Cool CAM.app/Contents/MacOS/Cool CAM$\" >/dev/null; then echo \"Cool CAM is running from ~/Applications: quit it first (replacing a running app crashes it)\"; exit 1; fi; rsync -a --delete \"packages/desktop/dist/mac-universal/Cool CAM.app/\" \"$HOME/Applications/Cool CAM.app/\" && echo \"installed to ~/Applications/Cool CAM.app\""
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

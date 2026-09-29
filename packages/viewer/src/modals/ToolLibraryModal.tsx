@@ -56,7 +56,7 @@ export function ToolLibraryModal() {
   const meta = (t: Tool) => `${t.diameter} mm · ${t.type === 'vbit' ? `${t.tipAngle ?? 90}°` : `${t.flutes} fl`}${t.fluteLength ? ` · ${t.fluteLength} mm` : ''}`;
 
   return (
-    <Modal title="Tool library" onClose={ui.closeModal} width={view === 'grid' ? 900 : 760} footer={<>
+    <Modal title="Tool library" className="tool-lib-modal" onClose={ui.closeModal} width="min(1500px, 96vw)" footer={<>
       <span className="lib-path" title={info ? `bundled defaults: ${info.bundled}` : ''}>{info ? `${info.source === 'env' ? 'COOL_CAM_LIBRARY: ' : 'Your library: '}${info.file}` : 'Library is shared with the MCP server.'}</span>
       <span className="spacer" />
       <button className="primary" onClick={ui.closeModal}>Done</button>

@@ -100,7 +100,6 @@ function Shell() {
       { label: 'Add 3D rough', disabled: !ui.job?.models?.length, onClick: () => addOperation(ui, 'rough3d') },
       { label: 'Add 3D finish', disabled: !ui.job?.models?.length, onClick: () => addOperation(ui, 'finish3d') },
       'sep',
-      { label: 'Tool library…', onClick: () => ui.openModal({ kind: 'tools' }) },
       { label: 'Sync job tools from library', disabled: !ui.job, onClick: () => syncToolsFromLibrary(ui, ui.library) },
     ] },
     { label: 'View', items: [
@@ -117,6 +116,8 @@ function Shell() {
       { label: 'Shapes', checked: ui.showShapes, onClick: () => ui.setShowShapes(!ui.showShapes) },
     ] },
     { label: 'Window', items: [
+      { label: 'Tool library…', onClick: () => ui.openModal({ kind: 'tools' }) },
+      'sep' as const,
       ...Object.entries(PANELS).map(([id, label]) => ({ label, checked: !!api?.getPanel(id), onClick: () => api && showPanel(api, id) })),
       'sep' as const,
       { label: 'Float panel', submenu: Object.entries(PANELS).filter(([id]) => id !== 'viewport').map(([id, label]) => ({ label, disabled: !api?.getPanel(id), onClick: () => api && floatPanel(api, id) })) },
@@ -132,7 +133,7 @@ function Shell() {
 
   return (
     <div className="app">
-      <MenuBar menus={nativeMenu ? [] : menus} right={<span className="stat muted">{ui.error ? <span className="err">{ui.error} </span> : null}{ui.generating ? 'generating… ' : ''}{ui.saving ? 'saving…' : ui.job ? `${ui.job.name} · ${ui.file}` : 'no job'}</span>} />
+      <MenuBar menus={nativeMenu ? [] : menus} right={<><button className="bar-btn" onClick={() => ui.openModal({ kind: 'tools' })} title="Tool library (Window → Tool library…)">Tools</button><span className="stat muted">{ui.error ? <span className="err">{ui.error} </span> : null}{ui.generating ? 'generating… ' : ''}{ui.saving ? 'saving…' : ui.job ? `${ui.job.name} · ${ui.file}` : 'no job'}</span></>} />
       <input ref={fileInput} type="file" accept=".dxf,.svg" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importFile(ui, f); e.target.value = ''; }} />
       <input ref={modelInput} type="file" accept=".stl,.obj" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importModelFile(ui, f); e.target.value = ''; }} />
       <input ref={imageInput} type="file" accept="image/png,image/jpeg" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) ui.openModal({ kind: 'heightmap', file: f }); e.target.value = ''; }} />

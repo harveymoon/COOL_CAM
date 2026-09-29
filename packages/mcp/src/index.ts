@@ -170,8 +170,12 @@ server.registerTool('propose_operations', {
   inputSchema: { modelId: z.string(), apply: z.boolean().optional(), boundary: z.number().optional(), cutout: z.boolean().optional(), stockToLeave: z.number().optional(), toolIds: z.array(z.string()).optional(), tabs: z.object({ count: z.number().int(), width: z.number(), height: z.number() }).optional() },
 }, guarded(({ modelId, apply, boundary, cutout, stockToLeave, toolIds, tabs }) => {
   const job = state.require();
-  const p = proposeOperations(job, { modelId, boundary, cutout, stockToLeave, toolIds, tabs });
+  // the whole library is a candidate pool; tools the proposal uses are added to the job
+  const pool = [...job.tools, ...readLibrary().filter(l => !job.tools.some(t => t.id === l.id))];
+  const p = proposeOperations({ ...job, tools: pool }, { modelId, boundary, cutout, stockToLeave, toolIds, tabs });
   if (apply !== false) {
+    const used = new Set(p.ops.flatMap(o => [o.toolId, (o as { restToolId?: string }).restToolId, (o as { flatToolId?: string }).flatToolId].filter((x): x is string => !!x)));
+    job.tools = [...job.tools, ...pool.filter(t => used.has(t.id) && !job.tools.some(x => x.id === t.id))].sort((a, b) => a.number - b.number);
     const sids = new Set(p.shapes.map(s => s.id)), oids = new Set(p.ops.map(o => o.id));
     job.shapes = [...job.shapes.filter(s => !sids.has(s.id)), ...p.shapes];
     job.ops = [...job.ops.filter(o => !oids.has(o.id)), ...p.ops];

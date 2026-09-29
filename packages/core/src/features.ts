@@ -127,7 +127,10 @@ export function proposeOperations(job: Job, opts: ProposalOptions): Proposal {
   const prefix = opts.prefix ?? model.id;
   const notes: string[] = []; const shapes: Shape[] = []; const ops: Op[] = [];
   const tools = job.tools.filter(t => !opts.toolIds || opts.toolIds.includes(t.id));
-  const endmills = tools.filter(t => t.type === 'endmill').sort((a, b) => b.diameter - a.diameter);
+  // largest first; in wood-type materials multi-flute cutters come before single flutes (O-flutes are for metals and plastics)
+  const material0 = job.material && job.material in MATERIALS ? job.material : undefined;
+  const woody = !material0 || ['softwood', 'hardwood', 'plywood', 'mdf', 'foam'].includes(material0);
+  const endmills = tools.filter(t => t.type === 'endmill').sort((a, b) => (woody ? Number(b.flutes >= 2) - Number(a.flutes >= 2) : 0) || b.diameter - a.diameter);
   const balls = tools.filter(t => t.type === 'ballnose').sort((a, b) => a.diameter - b.diameter);
   if (!endmills.length) throw new Error('No flat endmill in the job tools.');
   const material = (job.material && job.material in MATERIALS ? job.material : undefined) as MaterialId | undefined;

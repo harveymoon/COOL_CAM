@@ -112,9 +112,12 @@ export function removeModel(ui: Ui, id: string) {
 export function proposeForModel(ui: Ui, modelId: string): string[] {
   const job = ui.job; if (!job) return [];
   try {
-    const p = proposeOperations(job, { modelId });
+    // every tool in the library is a candidate, not just the ones already in this job; whatever the proposal uses joins the job
+    const pool = [...job.tools, ...ui.library.filter(l => !job.tools.some(t => t.id === l.id)).map(t => ({ ...t }))];
+    const p = proposeOperations({ ...job, tools: pool }, { modelId });
+    const used = new Set(p.ops.flatMap(o => [o.toolId, (o as { restToolId?: string }).restToolId, (o as { flatToolId?: string }).flatToolId].filter((x): x is string => !!x)));
     const sids = new Set(p.shapes.map(s => s.id)), oids = new Set(p.ops.map(o => o.id));
-    ui.setJob(j => ({ ...j, shapes: [...j.shapes.filter(s => !sids.has(s.id)), ...p.shapes], ops: [...j.ops.filter(o => !oids.has(o.id)), ...p.ops] }));
+    ui.setJob(j => ({ ...j, tools: [...j.tools, ...pool.filter(t => used.has(t.id) && !j.tools.some(x => x.id === t.id))].sort((a, b) => a.number - b.number), shapes: [...j.shapes.filter(s => !sids.has(s.id)), ...p.shapes], ops: [...j.ops.filter(o => !oids.has(o.id)), ...p.ops] }));
     const api = ui.dockRef.current; if (api) showPanel(api, 'ops');
     return p.notes;
   } catch (e) { return [`Proposal failed: ${(e as Error).message}`]; }

@@ -232,3 +232,13 @@ button.mini { padding: 1px 6px; font-size: 11px; }
 .wh-row { grid-template-columns: 1fr auto 1fr 1fr 1fr; align-items: end; }
 .link-toggle { padding: 4px 6px; margin-bottom: 4px; color: var(--muted); font-size: 14px; line-height: 1; }
 .link-toggle.on { color: var(--accent); border-color: var(--accent); }
+
+/* tool library fills the window */
+.tool-lib-modal { height: min(92vh, 1000px); }
+.tool-lib-modal .modal-body { display: flex; flex-direction: column; min-height: 0; }
+.tool-lib-modal .tool-lib { flex: 1; min-height: 0; grid-template-columns: 1fr 360px; }
+.tool-lib-modal .tool-list { display: flex; flex-direction: column; min-height: 0; }
+.tool-lib-modal .tool-grid { flex: 1; max-height: none; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.tool-lib-modal .list.tall { flex: 1; max-height: none; }
+.tool-lib-modal .tool-form { overflow: auto; min-height: 0; }
+.bar-btn { padding: 2px 10px; font-size: 12px; margin-right: 10px; }

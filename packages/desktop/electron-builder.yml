@@ -20,6 +20,7 @@ extraResources:
     to: examples
     filter: ["example-*.json"]
 npmRebuild: false
+afterPack: build/after-pack.cjs
 mac:
   category: public.app-category.productivity
   target:

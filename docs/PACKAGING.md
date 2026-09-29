@@ -52,6 +52,12 @@ packages/
 - Toolpath generation on a worker matters more once a native window can look frozen.
 - Code signing is a separate decision: unsigned builds trigger Gatekeeper and SmartScreen warnings; notarization needs an
   Apple developer account, Windows needs a certificate. Ship unsigned to yourself first.
+  - **macOS today:** the build is ad-hoc signed under our bundle id (`build/after-pack.cjs`). An app copied out of the dmg
+    is quarantined and Gatekeeper will say the developer cannot be verified: right-click → Open (or System Settings →
+    Privacy & Security → Open Anyway), or clear the flag with `xattr -cr "/Applications/Cool CAM.app"`. Launching the
+    `.app` from `packages/desktop/dist/mac-universal` directly is not quarantined and just runs. Without the after-pack
+    signing step the same copy reports "damaged and can't be opened".
+  - Set `CSC_NAME` (a "Developer ID Application" certificate) plus notarization to remove the prompt entirely.
 
 ## Status
 

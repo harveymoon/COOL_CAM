@@ -12,7 +12,7 @@ const resources = app.isPackaged ? process.resourcesPath : path.resolve(__dirnam
 
 /** Paths the packaged app ships alongside the code (see electron-builder.yml extraResources). */
 const bundledLibrary = app.isPackaged ? path.join(resources, 'library', 'tools.json') : path.join(resources, 'library', 'tools.json');
-const mcpEntry = app.isPackaged ? path.join(resources, 'mcp', 'index.js') : path.join(resources, 'packages', 'mcp', 'dist', 'index.js');
+const mcpEntry = app.isPackaged ? path.join(resources, 'mcp', 'index.mjs') : path.join(resources, 'packages', 'mcp', 'dist', 'index.js');
 
 let win: BrowserWindow | null = null;
 let baseUrl = '';
@@ -20,6 +20,20 @@ let jobsDir = '';
 
 async function boot() {
   jobsDir = process.env.COOL_CAM_JOBS_DIR ?? (app.isPackaged ? defaultJobsDir(app.getPath('documents')) : path.join(resources, 'jobs'));
+  // first launch of a packaged app: an empty jobs folder gets the bundled example jobs so there is something to look at
+  if (app.isPackaged) {
+    try {
+      fs.mkdirSync(jobsDir, { recursive: true });
+      if (!fs.readdirSync(jobsDir).some(f => f.endsWith('.json'))) {
+        const ex = path.join(resources, 'examples');
+        const names = (fs.existsSync(ex) ? fs.readdirSync(ex) : []).filter(f => /^example-.*\.json$/.test(f));
+        for (const f of names) fs.copyFileSync(path.join(ex, f), path.join(jobsDir, f));
+        // and open one of them, so the first window is not empty
+        const first = names.find(f => /star-coaster/.test(f)) ?? names[0];
+        if (first) fs.copyFileSync(path.join(ex, first), path.join(jobsDir, 'current.json'));
+      }
+    } catch (e) { console.error('[cool-cam] could not seed example jobs', e); }
+  }
   if (isDev) {
     // the Vite dev server (electron-vite) already mounts the API middleware: same loop as the browser
     baseUrl = process.env.ELECTRON_RENDERER_URL!;

@@ -3,6 +3,7 @@ import type { Job } from '@cool-cam/core';
 import type { Derived } from './store';
 import type { SimResponse } from './sim.worker';
 import type { SimGridInfo } from './scene';
+import { idxToTime as idx2t, timeToIdx as t2idx } from './timelineMath';
 
 export interface SimGrid extends SimGridInfo { summary: Extract<SimResponse, { type: 'ready' }>['summary']; timeline: Float64Array }
 
@@ -49,14 +50,12 @@ export function useSimulation(job: Job | null, derived: Derived | null) {
   useEffect(() => {
     if (!playing || !sim) return;
     let raf = 0; let last = performance.now(); const tl = sim.timeline;
-    const idxToTime = (i: number) => { const w = Math.floor(i); if (w <= 0) return 0; if (w >= tl.length) return tl[tl.length - 1]; const t0 = tl[w - 1], t1 = tl[w]; return t0 + (t1 - t0) * (i - w); };
-    const timeToIdx = (t: number) => { let lo = 0, hi = tl.length - 1; while (lo < hi) { const mid = (lo + hi) >> 1; if (tl[mid] < t) lo = mid + 1; else hi = mid; } const t0 = lo > 0 ? tl[lo - 1] : 0; const t1 = tl[lo]; return lo + (t1 > t0 ? (t - t0) / (t1 - t0) : 0); };
-    const tick = (now: number) => { const dt = ((now - last) / 1000) * speed; last = now; setProgress(p => { const t = idxToTime(p) + dt; if (t >= tl[tl.length - 1]) { setPlaying(false); return total; } return Math.min(total, timeToIdx(t)); }); raf = requestAnimationFrame(tick); };
+    const tick = (now: number) => { const dt = ((now - last) / 1000) * speed; last = now; setProgress(p => { const t = idx2t(tl, p) + dt; if (t >= tl[tl.length - 1]) { setPlaying(false); return total; } return Math.min(total, t2idx(tl, t)); }); raf = requestAnimationFrame(tick); };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing, speed, sim, total]);
 
-  const seconds = useMemo(() => { if (!sim || total === 0) return 0; const tl = sim.timeline; const w = Math.floor(progress); if (w <= 0) return 0; if (w >= tl.length) return tl[tl.length - 1]; return tl[w - 1] + (tl[w] - tl[w - 1]) * (progress - w); }, [progress, sim, total]);
+  const seconds = useMemo(() => (!sim || total === 0 ? 0 : idx2t(sim.timeline, progress)), [progress, sim, total]);
   const totalSeconds = sim ? sim.timeline[sim.timeline.length - 1] ?? 0 : derived?.totalSeconds ?? 0;
   const jumpTo = useCallback((i: number) => { setPlaying(false); setProgress(i); }, []);
 

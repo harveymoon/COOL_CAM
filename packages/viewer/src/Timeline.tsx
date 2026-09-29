@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { formatDuration } from '@cool-cam/core';
 import { useUi } from './ui';
+import { timeToIdx } from './timelineMath';
 
 const TOOL_COLORS = ['#5ec8ff', '#ffb454', '#c7a4ff', '#58d68d', '#ff8fab', '#ffd966', '#7fdbff', '#f39c6b'];
 
@@ -14,9 +15,7 @@ export function Timeline() {
   const fracToProgress = (f: number) => {
     f = Math.max(0, Math.min(1, f));
     if (!sim) return f * total;
-    const tl = sim.timeline; const t = f * (tl[tl.length - 1] || 0);
-    let lo = 0, hi = tl.length - 1; while (lo < hi) { const mid = (lo + hi) >> 1; if (tl[mid] < t) lo = mid + 1; else hi = mid; }
-    const t0 = lo > 0 ? tl[lo - 1] : 0, t1 = tl[lo]; return Math.min(total, lo + (t1 > t0 ? (t - t0) / (t1 - t0) : 0));
+    const tl = sim.timeline; return Math.min(total, timeToIdx(tl, f * (tl[tl.length - 1] || 0)));
   };
   const scrubTo = (clientX: number) => { const r = trackRef.current?.getBoundingClientRect(); if (!r) return; setPlaying(false); setProgress(fracToProgress((clientX - r.left) / r.width)); };
   const onDown = (e: React.PointerEvent) => { if (e.button !== 0) return; e.preventDefault(); scrubTo(e.clientX); const move = (ev: PointerEvent) => scrubTo(ev.clientX); const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); }; window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); };

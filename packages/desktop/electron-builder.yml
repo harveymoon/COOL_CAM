@@ -1,4 +1,5 @@
 appId: com.harveymoon.coolcam
+electronVersion: 44.4.5
 productName: Cool CAM
 copyright: Copyright © 2026 Harvey Moon
 directories:
@@ -11,11 +12,13 @@ extraResources:
   # bundled tool defaults + optional extra fonts, next to the app
   - from: ../../library
     to: library
-  # the MCP server the app can run with ELECTRON_RUN_AS_NODE (see the File menu)
-  - from: ../mcp/dist
+  # the MCP server, bundled into one file, that the app can run with ELECTRON_RUN_AS_NODE (see the File menu)
+  - from: out/mcp
     to: mcp
-asarUnpack:
-  - "**/node_modules/@cool-cam/**"
+  # example jobs copied into the user's jobs folder on first launch
+  - from: ../../jobs
+    to: examples
+    filter: ["example-*.json"]
 npmRebuild: false
 mac:
   category: public.app-category.productivity

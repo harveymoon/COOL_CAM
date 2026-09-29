@@ -12,7 +12,9 @@ const root = path.resolve(__dirname, '../..');
  * process serves the built renderer and the API from one localhost server, so the renderer never learns which it is on.
  */
 export default defineConfig({
-  main: { plugins: [externalizeDepsPlugin()], build: { rollupOptions: { input: path.resolve(__dirname, 'src/main/index.ts') } } },
+  // main bundles the workspace packages (server, core/node) so the packaged app needs no node_modules at runtime;
+  // 'electron' and node built-ins stay external
+  main: { build: { rollupOptions: { input: path.resolve(__dirname, 'src/main/index.ts') } } },
   preload: { plugins: [externalizeDepsPlugin()], build: { rollupOptions: { input: path.resolve(__dirname, 'src/preload/index.ts') } } },
   renderer: {
     root: viewer,

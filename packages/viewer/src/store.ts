@@ -39,6 +39,7 @@ export function useJobStore() {
   const load = useCallback(async (f: string) => {
     try {
       const r = await fetch(`/api/jobs/${encodeURIComponent(f)}?t=${Date.now()}`);
+      if (r.status === 404 && f === 'current.json') { setJobState(null); setError(null); return; } // fresh install: no job yet, not an error
       if (!r.ok) throw new Error(`${f}: ${r.status}`);
       const raw = await r.json();
       if (raw._rev && raw._rev === rev.current) return; // our own save echoing back

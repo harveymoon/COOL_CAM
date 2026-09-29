@@ -33,8 +33,26 @@ function setupLogging() {
   } catch { /* logging is best-effort */ }
 }
 
+/**
+ * First touch of the jobs folder, asynchronously. On macOS the first access to ~/Documents raises the "would like to access
+ * files in your Documents folder" prompt; a synchronous fs call would freeze the main thread until the user answers, and a
+ * freeze of more than a few seconds kills Chromium's helper processes, so the first navigation then fails with ERR_FAILED.
+ * With the promise API the wait happens on a worker thread and the event loop keeps running. Returns false when access is denied.
+ */
+async function ensureJobsDirAccess(dir: string): Promise<boolean> {
+  try { await fs.promises.mkdir(dir, { recursive: true }); await fs.promises.readdir(dir); return true; }
+  catch (e) { console.error(`[cool-cam] no access to the jobs folder ${dir}:`, e); return false; }
+}
+
 async function boot() {
   jobsDir = process.env.COOL_CAM_JOBS_DIR ?? (app.isPackaged ? defaultJobsDir(app.getPath('documents')) : path.join(resources, 'jobs'));
+  if (app.isPackaged && !(await ensureJobsDirAccess(jobsDir))) {
+    const fallback = path.join(app.getPath('userData'), 'jobs');
+    const r = dialog.showMessageBoxSync({ type: 'warning', message: 'Cool CAM cannot use the jobs folder in Documents', buttons: ['Continue', 'Open Privacy settings'], defaultId: 0,
+      detail: `macOS did not allow access to\n${jobsDir}\n\nProjects will be kept in\n${fallback}\nfor this session. To use Documents, allow Cool CAM under System Settings → Privacy & Security → Files and Folders, then restart the app.` });
+    if (r === 1) shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders');
+    jobsDir = fallback; await ensureJobsDirAccess(jobsDir);
+  }
   // first launch of a packaged app: an empty jobs folder gets the bundled example jobs so there is something to look at
   if (app.isPackaged) {
     try {

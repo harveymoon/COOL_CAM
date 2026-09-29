@@ -65,6 +65,9 @@ export async function importFile(ui: Ui, file: File, placeAtCorner = true) {
   ui.setSelectedShapes(shapes.map(s => s.id));
 }
 
+/** Local time as YYYYMMDD-HHMM for file names, so successive exports of the same job never overwrite each other. */
+const timeStamp = () => { const d = new Date(); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; };
+
 export function downloadGcode(ui: Ui, force = false) {
   const job = ui.job, g = ui.derived?.gcode; if (!job || !g) return;
   const errors = ui.sim?.summary.events.filter(e => e.severity === 'error') ?? [];
@@ -74,7 +77,7 @@ export function downloadGcode(ui: Ui, force = false) {
     return;
   }
   const blob = new Blob([g], { type: 'text/plain' }); const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = `${job.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.nc`; a.click(); URL.revokeObjectURL(a.href);
+  a.href = URL.createObjectURL(blob); a.download = `${job.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${timeStamp()}.nc`; a.click(); URL.revokeObjectURL(a.href);
 }
 
 export function syncToolsFromLibrary(ui: Ui, tools: Tool[]) {

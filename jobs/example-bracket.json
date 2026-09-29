@@ -29,20 +29,20 @@
    "notes": "General purpose upcut. Wood, plastics, soft metals."
   },
   {
-   "id": "am46369k",
-   "number": 369,
-   "name": "Amana 46369-K 1/8\" upcut Spektra",
+   "id": "t274z",
+   "number": 274,
+   "name": "#274-Z 1/8\" single flute ZrN",
    "type": "endmill",
    "diameter": 3.175,
-   "flutes": 2,
+   "flutes": 1,
    "fluteLength": 12.7,
-   "shankDiameter": 6.35,
-   "overallLength": 50.8,
+   "shankDiameter": 3.175,
+   "overallLength": 38.1,
    "rpm": 18000,
-   "feed": 1200,
-   "plunge": 400,
-   "sku": "Amana Tool 46369-K",
-   "notes": "Spektra coated 2-flute spiral upcut, 1/4 shank, 1/2 in cutting length. Wood and plastics."
+   "feed": 900,
+   "plunge": 300,
+   "sku": "Nomad Tools #274-Z",
+   "notes": "Single flute, ZrN coated: aluminium, acrylic, HDPE."
   }
  ],
  "shapes": [
@@ -3150,9 +3150,9 @@
   },
   {
    "id": "bracket_bore_1",
-   "name": "Bore Ø6.5 (Amana 46369-K 1/8\" upcut Spektra)",
+   "name": "Bore Ø6.5 (#274-Z 1/8\" single flute ZrN)",
    "type": "pocket",
-   "toolId": "am46369k",
+   "toolId": "t274z",
    "shapeIds": [
     "bracket_hole_1"
    ],
@@ -3166,9 +3166,9 @@
   },
   {
    "id": "bracket_bore_2",
-   "name": "Bore Ø6.5 (Amana 46369-K 1/8\" upcut Spektra)",
+   "name": "Bore Ø6.5 (#274-Z 1/8\" single flute ZrN)",
    "type": "pocket",
-   "toolId": "am46369k",
+   "toolId": "t274z",
    "shapeIds": [
     "bracket_hole_2"
    ],

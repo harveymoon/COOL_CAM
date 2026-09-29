@@ -3,7 +3,7 @@
 (Stock: 160 x 110 x 12 mm, origin front-left, Z0 at stock top)
 (Material: plywood)
 (T201 = #201 1/4" square 3FL)
-(T369 = Amana 46369-K 1/8" upcut Spektra)
+(T274 = #274-Z 1/8" single flute ZrN)
 (Simulation: clean)
 G90 G21 G17 G94
 G54
@@ -447,14 +447,14 @@ G0 Z10.000
 (Operation: Pocket)
 M5
 G53 G0 Z-5.000
-M6 T369
+M6 T274
 M3 S18000
 G4 P3
 G0 Z10.000
 G0 X99.032 Y54.441
 G0 Z3.000
 G0 Z0.500
-G1 X99.210 Y54.210 Z0.490 F1200
+G1 X99.210 Y54.210 Z0.490 F900
 G1 X99.441 Y54.032 Z0.481
 G1 X99.711 Y53.920 Z0.471
 G1 X100.187 Y53.858 Z0.456
@@ -962,7 +962,7 @@ G0 Z10.000
 G0 X120.000 Y35.000
 G0 Z3.000
 G0 Z0.500
-G1 Z-4.000 F400
+G1 Z-4.000 F300
 G0 Z0.500
 G0 Z-3.000
 G1 Z-8.000

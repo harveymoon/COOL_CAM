@@ -29,6 +29,22 @@
    "notes": "General purpose upcut. Wood, plastics, soft metals."
   },
   {
+   "id": "t274z",
+   "number": 274,
+   "name": "#274-Z 1/8\" single flute ZrN",
+   "type": "endmill",
+   "diameter": 3.175,
+   "flutes": 1,
+   "fluteLength": 12.7,
+   "shankDiameter": 3.175,
+   "overallLength": 38.1,
+   "rpm": 18000,
+   "feed": 900,
+   "plunge": 300,
+   "sku": "Nomad Tools #274-Z",
+   "notes": "Single flute, ZrN coated: aluminium, acrylic, HDPE."
+  },
+  {
    "id": "vbit60_todo",
    "number": 302,
    "name": "(to buy) 60° V-bit, 1/4\" shank",
@@ -40,23 +56,7 @@
    "rpm": 18000,
    "feed": 1000,
    "plunge": 400,
-   "notes": "Not in your library. Not in your library yet. Any 1/4\"-shank 60° V-bit (e.g. Carbide 3D #302) — replace this entry with the real cutter."
-  },
-  {
-   "id": "am46369k",
-   "number": 369,
-   "name": "Amana 46369-K 1/8\" upcut Spektra",
-   "type": "endmill",
-   "diameter": 3.175,
-   "flutes": 2,
-   "fluteLength": 12.7,
-   "shankDiameter": 6.35,
-   "overallLength": 50.8,
-   "rpm": 18000,
-   "feed": 1200,
-   "plunge": 400,
-   "sku": "Amana Tool 46369-K",
-   "notes": "Spektra coated 2-flute spiral upcut, 1/4 shank, 1/2 in cutting length. Wood and plastics."
+   "notes": "Not in your library. Not in your library. Not in your library. Not in your library yet. Any 1/4\"-shank 60° V-bit (e.g. Carbide 3D #302) — replace this entry with the real cutter."
   }
  ],
  "shapes": [
@@ -3636,7 +3636,7 @@
    ],
    "depth": 4,
    "stepover": 0.4,
-   "flatToolId": "am46369k",
+   "flatToolId": "t274z",
    "rpm": 18000,
    "feed": 460,
    "plunge": 160

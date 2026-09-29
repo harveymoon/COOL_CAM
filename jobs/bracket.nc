@@ -3,7 +3,7 @@
 (Stock: 130 x 90 x 9 mm, origin front-left, Z0 at stock top)
 (Material: hardwood)
 (T201 = #201 1/4" square 3FL)
-(T369 = Amana 46369-K 1/8" upcut Spektra)
+(T274 = #274-Z 1/8" single flute ZrN)
 (Simulation: clean)
 G90 G21 G17 G94
 G54
@@ -317,7 +317,7 @@ G0 Z10.000
 (Operation: Pocket)
 M5
 G53 G0 Z-5.000
-M6 T369
+M6 T274
 M3 S18000
 G4 P3
 G0 Z10.000

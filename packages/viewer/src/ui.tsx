@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type ReactNode, type SetStateAction } from 'react';
 import { DEFAULT_TOOLS } from '@cool-cam/core';
-import type { Job, Tool } from '@cool-cam/core';
+import type { Job, Tool, MachineProfile } from '@cool-cam/core';
 import { useJobStore, type Derived, type JobUpdater, type ProjectEntry } from './store';
 import { useSimulation, type SimGrid } from './useSimulation';
 import type { SceneController } from './scene';
@@ -10,6 +10,7 @@ export type ModalState =
   | { kind: 'addShape' }
   | { kind: 'transform' }
   | { kind: 'tools' }
+  | { kind: 'machines' }
   | { kind: 'text' }
   | { kind: 'heightmap'; file: File }
   | { kind: 'open' }
@@ -44,6 +45,8 @@ export interface Ui {
   tabEdit: boolean; setTabEdit: (v: boolean) => void;
   modal: ModalState | null; openModal: (m: ModalState) => void; closeModal: () => void;
   library: Tool[]; saveLibrary: (tools: Tool[]) => void;
+  /** The user's own machine profiles (presets live in core). */
+  machines: MachineProfile[]; saveMachines: (m: MachineProfile[]) => void;
   /** Font names available from the dev server (/api/fonts). */
   fonts: string[];
 }
@@ -76,6 +79,9 @@ export function UiProvider({ children }: { children: ReactNode }) {
   useEffect(() => { fetch('/api/fonts').then(r => r.json()).then((f: string[]) => Array.isArray(f) && setFonts(f)).catch(() => {}); }, []);
   useEffect(() => { fetch('/api/tools').then(r => r.json()).then((t: Tool[]) => { if (Array.isArray(t) && t.length) setLibrary(t); }).catch(() => {}); }, []);
   const saveLibrary = useCallback((tools: Tool[]) => { setLibrary(tools); fetch('/api/tools', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(tools) }).catch(() => {}); }, []);
+  const [machines, setMachines] = useState<MachineProfile[]>([]);
+  useEffect(() => { fetch('/api/machines').then(r => r.json()).then((m: MachineProfile[]) => { if (Array.isArray(m)) setMachines(m); }).catch(() => {}); }, []);
+  const saveMachines = useCallback((m: MachineProfile[]) => { setMachines(m); fetch('/api/machines', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(m) }).catch(() => {}); }, []);
 
   // drop selection of shapes that no longer exist
   useEffect(() => { if (!store.job) return; const ids = new Set(store.job.shapes.map(s => s.id)); setSelectedShapes(s => s.every(id => ids.has(id)) ? s : s.filter(id => ids.has(id))); }, [store.job]);
@@ -97,8 +103,8 @@ export function UiProvider({ children }: { children: ReactNode }) {
     selectedShapes, setSelectedShapes, pickShape, activeOp, setActiveOp: setActiveOpAndMode, selectedModel, setSelectedModel,
     ...simState,
     showPaths, setShowPaths, showStock, setShowStock, showModels, setShowModels, showShapes, setShowShapes, xray, setXray, viewCube, setViewCube, ortho, setOrtho, sceneRef, sceneReady, setSceneReady, dockRef, tabEdit, setTabEdit,
-    modal, openModal: setModal, closeModal: () => setModal(null), library, saveLibrary, fonts,
-  }), [store, simState, selectedShapes, pickShape, activeOp, setActiveOpAndMode, selectedModel, paramsMode, showPaths, showStock, showModels, showShapes, xray, viewCube, ortho, sceneReady, modal, library, saveLibrary, createJob, tabEdit, fonts]);
+    modal, openModal: setModal, closeModal: () => setModal(null), library, saveLibrary, machines, saveMachines, fonts,
+  }), [store, simState, selectedShapes, pickShape, activeOp, setActiveOpAndMode, selectedModel, paramsMode, showPaths, showStock, showModels, showShapes, xray, viewCube, ortho, sceneReady, modal, library, saveLibrary, machines, saveMachines, createJob, tabEdit, fonts]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

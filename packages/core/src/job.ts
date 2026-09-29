@@ -4,6 +4,7 @@ import type { Op } from './ops.js';
 import type { Model } from './mesh.js';
 import { DEFAULT_TOOLS } from './tools.js';
 import { SHAPEOKO_HDM } from './machine.js';
+import type { MachineProfile } from './machine.js';
 
 /** Parameters a primitive shape was built from, so it stays editable. Cleared when the shape is rotated, scaled or edited freeform. */
 export type ShapeParams =
@@ -38,7 +39,10 @@ export interface Stock {
 export interface Job {
   name: string;
   units: 'mm';
+  /** Preset id (see MACHINE_PRESETS) or the id of the embedded custom machine below. */
   machineId: string;
+  /** A custom machine profile embedded in the job so the post, simulator and MCP server see it without a machines file. */
+  machine?: MachineProfile;
   material?: string;
   stock: Stock;
   /** Z for rapids between operations (relative to Z0). */

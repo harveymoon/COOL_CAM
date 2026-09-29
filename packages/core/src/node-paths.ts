@@ -54,6 +54,11 @@ export function readToolLibrary<T = unknown>(file: string): T[] {
   try { const t = JSON.parse(fs.readFileSync(file, 'utf8')); return Array.isArray(t) ? (t as T[]) : []; } catch { return []; }
 }
 
+/** Path of another per-user JSON file in the same folder as the tool library (e.g. `machines.json`). */
+export function userFile(name: string, opts: { appName?: string; env?: NodeJS.ProcessEnv } = {}): string {
+  return path.join(userDataDir(opts.appName, opts.env ?? process.env), name);
+}
+
 export function writeToolLibrary(file: string, tools: unknown[]): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(tools, null, 1));

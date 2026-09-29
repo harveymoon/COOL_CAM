@@ -1,5 +1,5 @@
 import type { Job, Toolpath, MachineProfile, Tool } from '@cool-cam/core';
-import { MACHINES, SHAPEOKO_HDM, getTool, estimate, formatDuration, stockBounds } from '@cool-cam/core';
+import { machineFor, getTool, estimate, formatDuration, stockBounds } from '@cool-cam/core';
 import { fitArcs } from './arcs.js';
 
 export interface PostOptions {
@@ -42,7 +42,7 @@ export interface PostResult {
  * - No canned cycles or cutter compensation (GRBL 1.1 does not support them); pecks and offsets are already expanded.
  */
 export function postGrbl(job: Job, toolpaths: Toolpath[], opts: PostOptions = {}): PostResult {
-  const machine = MACHINES[job.machineId] ?? SHAPEOKO_HDM;
+  const machine = machineFor(job);
   const p = opts.precision ?? 3;
   const toolChange = opts.toolChange ?? machine.toolChange;
   const warnings: string[] = [];

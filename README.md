@@ -1,13 +1,15 @@
 # Cool CAM
 
-MCP-enabled, open-source 2.5D CAM for a **Shapeoko HDM** (GRBL / Carbide Motion / BitSetter), built as a TypeScript monorepo so Claude can drive it directly.
+MCP-enabled, open-source 2.5D and 3D CAM for **GRBL-class CNC routers**, built as a TypeScript monorepo so Claude can drive it directly. Machine profiles cover Shapeoko, Nomad, LongMill, Onefinity, X-Carve and 3018-style machines, and you can add your own; the defaults are tuned for a Shapeoko HDM with Carbide Motion and a BitSetter.
+
+![Cool CAM: V-carved sign with the plaque cut out, shown in the simulation viewport](docs/screenshots/viewport-sign.jpg)
 
 ```
 packages/
   core/    geometry (Clipper offsets), DXF + SVG + STL/OBJ import, tool library, feeds & speeds,
            operations: pocket (helix/ramp/plunge entry, islands), profile (in/out/on, auto/manual tabs), drill (peck),
            3D rough (Z-level clearing of a mesh) and 3D finish (parallel raster) via heightmap drop-cutter
-  post/    GRBL post for Carbide Motion: M6 T<n> tool changes for the BitSetter, G53 safe moves
+  post/    GRBL post: M6 T<n> or M0 tool changes (per machine profile), G53 safe moves, arc fitting
   sim/     heightmap stock-removal simulator with collision / over-depth checks and scrubbable keyframes
   mcp/     MCP server (stdio) exposing the whole pipeline as tools
   viewer/  Vite + React + Three.js: 3D toolpaths, live stock simulation, timeline scrubber, G-code export
@@ -23,10 +25,8 @@ examples/  sample drawings
 | *Open screen: every project in the jobs folder with its last simulated state* | *Default layout: job and shapes on the left, operations and output on the right* |
 | ![Tool library grid](docs/screenshots/tool-library.jpg) | ![Operation parameters](docs/screenshots/operation-parameters.jpg) |
 | *Tool library: your cutters rendered in 3D, the same models that move in the simulation* | *Editing a 3D roughing operation: feeds, stepdown, machining boundary* |
-| ![Viewport only: dodecahedron](docs/screenshots/viewport-dodecahedron.jpg) | ![Viewport only: V-carved sign](docs/screenshots/viewport-sign.jpg) |
-| *Viewport alone: 3D rough and ball-nose finish of a half dodecahedron* | *Viewport alone: V-carved lettering and a plaque cut out with tabs* |
-| ![Wide viewport with a row of panels](docs/screenshots/layout-wide-viewport.jpg) | ![Compact arrangement](docs/screenshots/layout-compact.jpg) |
-| *Panels dock anywhere: a wide viewport over a row of panels* | *…or a compact arrangement; layouts can be saved from the Window menu* |
+| ![Viewport only: dodecahedron](docs/screenshots/viewport-dodecahedron.jpg) | ![Wide viewport with a row of panels](docs/screenshots/layout-wide-viewport.jpg) |
+| *Viewport alone: 3D rough and ball-nose finish of a half dodecahedron* | *Panels dock anywhere, e.g. a wide viewport over a row of panels; layouts can be saved from the Window menu* |
 
 ## Quick start
 

@@ -1,10 +1,10 @@
-import { MATERIALS } from '@cool-cam/core';
+import { MATERIALS, machineFor } from '@cool-cam/core';
 import type { Job, MaterialId } from '@cool-cam/core';
 import { useUi } from '../ui';
 import { Num, Sel, Text } from '../Fields';
 
 export function JobPanel() {
-  const { job, setJob, derived } = useUi();
+  const { job, setJob, derived, openModal } = useUi();
   if (!job) return <div className="empty">No job loaded. File → New job, or File → Open.</div>;
   const stock = job.stock;
   const est = derived ? Math.round(derived.totalSeconds) : 0;
@@ -12,6 +12,7 @@ export function JobPanel() {
     <div className="panel-body form">
       <Text label="name" value={job.name} onChange={v => setJob(j => ({ ...j, name: v }))} />
       <Sel label="material" value={(job.material ?? '') as MaterialId} options={[{ value: '' as MaterialId, label: '—' }, ...Object.entries(MATERIALS).map(([k, m]) => ({ value: k as MaterialId, label: m.name }))]} onChange={v => setJob(j => ({ ...j, material: v || undefined }))} />
+      <div className="row"><span className="lbl">machine</span><span className="machine-row"><span>{machineFor(job).name}</span><button onClick={() => openModal({ kind: 'machines' })}>Change…</button></span></div>
       <div className="sub">Stock</div>
       <div className="grid3">
         <Num label="width X" value={stock.width} step={1} onChange={v => setJob(j => ({ ...j, stock: { ...j.stock, width: v ?? 1 } }))} />

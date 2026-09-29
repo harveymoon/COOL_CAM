@@ -78,3 +78,19 @@ describe('simplify on very long loops', () => {
     expect(out.points.length).toBeLessThan(n / 10);
   });
 });
+
+describe('machine profiles', () => {
+  it('ships presets that validate, defaults to the HDM, and prefers a machine embedded in the job', async () => {
+    const { MACHINE_PRESETS, MACHINES, SHAPEOKO_HDM, machineFor, validateMachine, newJob } = await import('../src/index.js');
+    expect(MACHINE_PRESETS.length).toBeGreaterThan(5);
+    for (const m of MACHINE_PRESETS) expect(validateMachine(m)).toEqual([]);
+    expect(new Set(MACHINE_PRESETS.map(m => m.id)).size).toBe(MACHINE_PRESETS.length);
+    const job = newJob('x');
+    expect(machineFor(job)).toBe(SHAPEOKO_HDM);
+    expect(machineFor({ machineId: 'nomad-3' })).toBe(MACHINES['nomad-3']);
+    expect(machineFor({ machineId: 'nope' })).toBe(SHAPEOKO_HDM);
+    const custom = { ...MACHINES['generic-grbl'], id: 'mine', name: 'Mine', travel: { x: 123, y: 456, z: 78 } };
+    expect(machineFor({ machineId: 'mine', machine: custom }).travel.x).toBe(123);
+    expect(validateMachine({ ...custom, safeZMachine: 5 })).toContain('safeZMachine must be a machine-coordinate Z at or below 0');
+  });
+});

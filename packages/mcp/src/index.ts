@@ -5,7 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import {
-  newJob, parseDxf, parseSvg, bbox, uid, generateToolpaths, estimate, formatDuration, feedsAndSpeeds, MATERIALS, MACHINES, SHAPEOKO_HDM,
+  newJob, parseDxf, parseSvg, bbox, uid, generateToolpaths, estimate, formatDuration, feedsAndSpeeds, MATERIALS, MACHINE_PRESETS, SHAPEOKO_HDM, machineFor, validateMachine,
   rect, circleShape, polygon, regularPolygon, slot, signedArea, perimeter, stockBounds, getTool,
   parseStl, parseObj, meshBBox, placedMesh, placementFor, IDENTITY_PLACEMENT, getModel, proposeOperations,
   loadFont, textToPolylines, heightmapToMesh, decodeImage, translateParams,
@@ -38,7 +38,7 @@ function writeLibrary(tools: Tool[]) { writeToolLibrary(libraryFile, tools); }
 const state = new JobState(jobsDir);
 
 const server = new McpServer({ name: 'cool-cam', version: '0.1.0' }, {
-  instructions: `Cool CAM: 2.5D CAM for a Shapeoko HDM (GRBL, Carbide Motion, BitSetter). Units are mm. Work coordinates: X0/Y0 at the stock origin corner (default front-left), Z0 at stock top. Depths are positive numbers below the stock top.
+  instructions: `Cool CAM: 2.5D/3D CAM for GRBL-class CNC routers (defaults tuned for a Shapeoko HDM with Carbide Motion and BitSetter; see machine_info / set_machine). Units are mm. Work coordinates: X0/Y0 at the stock origin corner (default front-left), Z0 at stock top. Depths are positive numbers below the stock top.
 Typical flow: new_job → import_geometry / add_shape / import_model → (feeds_and_speeds) → add_operation (pocket / profile / drill / rough3d / finish3d) → generate → simulate → export_gcode. Every change is saved to ${jobsDir}/current.json which the web viewer (npm run dev) watches live.`,
 });
 
@@ -63,7 +63,7 @@ function modelSummary(m: Model) {
 function jobSummary(job: Job) {
   const b = stockBounds(job.stock);
   return {
-    name: job.name, machine: MACHINES[job.machineId]?.name ?? job.machineId, material: job.material,
+    name: job.name, machine: machineFor(job).name, material: job.material,
     stock: { ...job.stock, bounds: b }, safeZ: job.safeZ, clearanceZ: job.clearanceZ,
     tools: job.tools.map(t => ({ id: t.id, number: t.number, name: t.name, type: t.type, diameter: t.diameter, flutes: t.flutes, fluteLength: t.fluteLength, tipAngle: t.tipAngle, rpm: t.rpm, feed: t.feed, plunge: t.plunge })),
     shapes: job.shapes.map(shapeSummary),
@@ -309,7 +309,7 @@ server.registerTool('feeds_and_speeds', {
   title: 'Feeds and speeds',
   description: `Recommend rpm, feed, plunge, depth per pass and stepover for a tool in a material on the HDM. Materials: ${Object.keys(MATERIALS).join(', ')}. Conservative starting points.`,
   inputSchema: { toolId: z.string(), material: z.enum(Object.keys(MATERIALS) as [MaterialId, ...MaterialId[]]) },
-}, guarded(({ toolId, material }) => { const job = state.require(); const m = MACHINES[job.machineId] ?? SHAPEOKO_HDM; return feedsAndSpeeds(getTool(job, toolId), material, { minRpm: m.spindle.minRpm, maxRpm: m.spindle.maxRpm, maxFeed: m.maxFeed.xy }); }));
+}, guarded(({ toolId, material }) => { const job = state.require(); const m = machineFor(job); return feedsAndSpeeds(getTool(job, toolId), material, { minRpm: m.spindle.minRpm, maxRpm: m.spindle.maxRpm, maxFeed: m.maxFeed.xy }); }));
 
 const opBase = {
   id: z.string().optional(), name: z.string().optional(), toolId: z.string(), shapeIds: z.array(z.string()).min(1),
@@ -339,7 +339,7 @@ server.registerTool('add_operation', {
   if (job.ops.some(o => o.id === full.id)) throw new Error(`Op id ${full.id} exists; use update_operation`);
   job.ops.push(full); state.invalidate(); state.save();
   const tp = generateToolpaths({ ...job, ops: [full] })[0];
-  const st = estimate(tp, MACHINES[job.machineId] ?? SHAPEOKO_HDM);
+  const st = estimate(tp, machineFor(job));
   return { op: full, preview: { moves: st.moves, cutLength: r2(st.cutLength), minZ: st.minZ, estimated: formatDuration(st.seconds), warnings: tp.warnings } };
 }));
 
@@ -371,7 +371,7 @@ function ensureToolpaths() {
 
 server.registerTool('generate', { title: 'Generate toolpaths', description: 'Compute toolpaths for all enabled operations and return per-op stats and warnings.', inputSchema: {} },
   guarded(() => {
-    const job = state.require(); state.invalidate(); const tps = ensureToolpaths(); const m = MACHINES[job.machineId] ?? SHAPEOKO_HDM;
+    const job = state.require(); state.invalidate(); const tps = ensureToolpaths(); const m = machineFor(job);
     let total = 0;
     const ops = tps.map(tp => { const st = estimate(tp, m); total += st.seconds; return { op: tp.opId, name: tp.opName, tool: tp.toolId, moves: st.moves, cutLength: r2(st.cutLength), rapidLength: r2(st.rapidLength), minZ: r2(st.minZ), estimated: formatDuration(st.seconds), warnings: tp.warnings }; });
     return { ops, totalEstimated: formatDuration(total), viewer: 'Open the viewer (npm run dev) to see the toolpaths; it reloads automatically.' };
@@ -403,8 +403,23 @@ server.registerTool('export_gcode', {
   return { file, summary: summarizePost(r), simulation: errors.length ? `${errors.length} error(s), exported with force` : 'clean', warnings: allWarnings, head: r.gcode.split('\n').slice(0, 30).join('\n') };
 }));
 
-server.registerTool('machine_info', { title: 'Machine info', description: 'Machine profile (travel, feeds, spindle) and the list of materials known to the feeds calculator.', inputSchema: {} },
-  guarded(() => ({ machine: SHAPEOKO_HDM, materials: Object.entries(MATERIALS).map(([id, m]) => ({ id, name: m.name })) })));
+server.registerTool('machine_info', { title: 'Machine info', description: "The current job's machine profile (travel, feeds, spindle, tool-change mode, safe machine Z), the built-in machine presets, and the materials known to the feeds calculator.", inputSchema: {} },
+  guarded(() => ({ machine: state.job ? machineFor(state.job) : SHAPEOKO_HDM, presets: MACHINE_PRESETS.map(m => ({ id: m.id, name: m.name, travel: m.travel, toolChange: m.toolChange })), materials: Object.entries(MATERIALS).map(([id, m]) => ({ id, name: m.name })) })));
+
+const machineSchema = z.object({
+  id: z.string(), name: z.string(), controller: z.enum(['grbl', 'grblhal', 'fluidnc', 'other']).default('grbl'),
+  travel: z.object({ x: z.number(), y: z.number(), z: z.number() }), maxFeed: z.object({ xy: z.number(), z: z.number() }), rapid: z.object({ xy: z.number(), z: z.number() }), accel: z.object({ xy: z.number(), z: z.number() }),
+  spindle: z.object({ minRpm: z.number(), maxRpm: z.number(), spinUpSeconds: z.number().default(3) }), toolChange: z.enum(['m6-prompt', 'm0-pause', 'none']), safeZMachine: z.number(), notes: z.string().optional(),
+});
+server.registerTool('set_machine', { title: 'Set machine', description: 'Point the current job at a machine: a preset id from machine_info, or a full custom profile (embedded in the job). Affects feed limits, time estimates, tool-change G-code and the safe machine Z.', inputSchema: { machineId: z.string().optional().describe('A preset id, e.g. shapeoko-hdm, nomad-3, generic-grbl'), machine: machineSchema.optional().describe('A full custom profile; its id becomes the job machineId') } },
+  guarded(({ machineId, machine }) => {
+    const job = state.require();
+    if (machine) { const problems = validateMachine(machine); if (problems.length) throw new Error(problems.join('; ')); job.machine = machine; job.machineId = machine.id; }
+    else if (machineId) { const preset = MACHINE_PRESETS.find(m => m.id === machineId); if (!preset) throw new Error(`Unknown preset "${machineId}". Presets: ${MACHINE_PRESETS.map(m => m.id).join(', ')}`); delete job.machine; job.machineId = preset.id; }
+    else throw new Error('Give a machineId or a machine profile.');
+    state.invalidate(); state.save();
+    return { machine: machineFor(job) };
+  }));
 
 server.registerResource('current-job', 'cool-cam://job/current', { title: 'Current job', description: 'The current job as JSON', mimeType: 'application/json' },
   async (uri) => ({ contents: [{ uri: uri.href, mimeType: 'application/json', text: state.job ? JSON.stringify(state.job, null, 2) : '{}' }] }));

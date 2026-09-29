@@ -16,6 +16,7 @@ import { HeightmapModal } from './modals/HeightmapModal';
 import { AddShapeModal } from './modals/AddShapeModal';
 import { TransformModal } from './modals/TransformModal';
 import { ToolLibraryModal } from './modals/ToolLibraryModal';
+import { MachinesModal } from './modals/MachinesModal';
 import { PromptModal, ConfirmModal } from './modals/SmallModals';
 import { Landing } from './Landing';
 import { addOperation, deleteShapes, downloadGcode, duplicateShapes, importFile, importModelFile, syncToolsFromLibrary, openShapeParams, booleanShapes, offsetShapes } from './actions';
@@ -119,6 +120,7 @@ function Shell() {
     ] },
     { label: 'Window', items: [
       { label: 'Tool library…', onClick: () => ui.openModal({ kind: 'tools' }) },
+      { label: 'Machines…', onClick: () => ui.openModal({ kind: 'machines' }) },
       'sep' as const,
       ...Object.entries(PANELS).map(([id, label]) => ({ label, checked: !!api?.getPanel(id), onClick: () => api && showPanel(api, id) })),
       'sep' as const,
@@ -144,6 +146,7 @@ function Shell() {
         {ui.modal?.kind === 'addShape' && <AddShapeModal />}
         {ui.modal?.kind === 'transform' && <TransformModal />}
         {ui.modal?.kind === 'tools' && <ToolLibraryModal />}
+        {ui.modal?.kind === 'machines' && <MachinesModal />}
         {ui.modal?.kind === 'text' && <TextModal />}
         {ui.modal?.kind === 'heightmap' && <HeightmapModal file={ui.modal.file} />}
         {ui.modal?.kind === 'open' && ui.job && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) ui.closeModal(); }}><div className="modal landing-modal"><Landing asPage={false} /></div></div>}

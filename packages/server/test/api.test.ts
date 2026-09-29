@@ -52,6 +52,15 @@ describe('local API server', () => {
     list = await (await fetch(url + 'api/jobs')).json();
     expect(list.some((e: { name: string }) => e.name === 'coaster.json')).toBe(false);
   });
+  it('stores the user\'s machines next to the tool library', async () => {
+    const { url } = await started;
+    expect(await (await fetch(url + 'api/machines')).json()).toEqual([]);
+    const m = { id: 'my-router', name: 'My router', controller: 'grbl', travel: { x: 300, y: 300, z: 80 }, maxFeed: { xy: 3000, z: 1000 }, rapid: { xy: 3000, z: 1000 }, accel: { xy: 200, z: 100 }, spindle: { minRpm: 8000, maxRpm: 24000, spinUpSeconds: 3 }, toolChange: 'm0-pause', safeZMachine: -5 };
+    expect((await (await fetch(url + 'api/machines', { method: 'PUT', body: JSON.stringify([m]) })).json()).ok).toBe(true);
+    expect((await (await fetch(url + 'api/machines')).json())[0].id).toBe('my-router');
+    expect(fs.existsSync(path.join(dataDir, 'machines.json'))).toBe(true);
+    expect((await fetch(url + 'api/machines', { method: 'PUT', body: '{}' })).status).toBe(400);
+  });
   it('lists platform font folders', () => {
     expect(defaultFontDirs(['/extra']).at(-1)).toBe('/extra');
     expect(defaultFontDirs().length).toBeGreaterThan(1);

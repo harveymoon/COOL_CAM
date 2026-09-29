@@ -1,5 +1,5 @@
 import type { Job, Toolpath, Tool, Move, MachineProfile } from '@cool-cam/core';
-import { MACHINES, SHAPEOKO_HDM, getTool, stockBounds } from '@cool-cam/core';
+import { machineFor, getTool, stockBounds } from '@cool-cam/core';
 
 /**
  * Heightmap ("2.5D dexel") stock simulator. Good for 3-axis work: the stock is a grid of surface heights and each
@@ -57,7 +57,7 @@ export class StockSim {
 
   constructor(job: Job, toolpaths: Toolpath[], opts: SimOptions = {}) {
     this.job = job;
-    this.machine = MACHINES[job.machineId] ?? SHAPEOKO_HDM;
+    this.machine = machineFor(job);
     const b = stockBounds(job.stock);
     const margin = opts.margin ?? 0;
     const W = job.stock.width + 2 * margin, H = job.stock.length + 2 * margin;

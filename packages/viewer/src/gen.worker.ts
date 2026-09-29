@@ -3,7 +3,7 @@
  * Toolpath generation off the main thread: generate every enabled operation, estimate, post to G-code, and return the
  * derived bundle the UI renders. The store terminates and restarts this worker to cancel an in-flight generation.
  */
-import { generateToolpaths, estimate, MACHINES, SHAPEOKO_HDM } from '@cool-cam/core';
+import { generateToolpaths, estimate, machineFor } from '@cool-cam/core';
 import type { Job, Toolpath, ToolpathStats } from '@cool-cam/core';
 import { postGrbl } from '@cool-cam/post';
 
@@ -30,7 +30,7 @@ self.onmessage = (ev: MessageEvent<GenRequest>) => {
   const t0 = performance.now();
   try {
     const job = msg.job;
-    const machine = MACHINES[job.machineId] ?? SHAPEOKO_HDM;
+    const machine = machineFor(job);
     const toolpaths = generateToolpaths(job);
     const stats = toolpaths.map(tp => estimate(tp, machine));
     const post = postGrbl(job, toolpaths);

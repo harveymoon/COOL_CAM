@@ -112,6 +112,12 @@ export function createApi(opts: ApiOptions): Api {
         const hit = listFonts(fontDirs).find(f => f.name === name); if (!hit) { res.statusCode = 404; res.end('font not found'); return true; }
         res.setHeader('content-type', 'font/ttf'); res.end(fs.readFileSync(hit.file)); return true;
       }
+      if (route === '/api/machines') {
+        // the user's own machine profiles, next to the tool library; presets ship in core
+        const file = path.join(library.userDir, 'machines.json');
+        if (req.method === 'PUT') { readBody(req).then(body => { try { const m = JSON.parse(body); if (!Array.isArray(m)) throw new Error('machines must be an array'); writeToolLibrary(file, m); json(res, { ok: true }); } catch (e) { json(res, { error: (e as Error).message }, 400); } }); return true; }
+        json(res, readToolLibrary(file)); return true;
+      }
       if (route === '/api/tools/info') { json(res, { file: library.file, source: library.source, userDir: library.userDir, bundled: library.bundled }); return true; }
       if (route === '/api/tools/defaults') { json(res, library.bundled ? readToolLibrary(library.bundled) : []); return true; }
       if (route === '/api/tools') {

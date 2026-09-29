@@ -19,6 +19,7 @@ import { ToolLibraryModal } from './modals/ToolLibraryModal';
 import { PromptModal, ConfirmModal, OpenJobModal } from './modals/SmallModals';
 import { addOperation, deleteShapes, downloadGcode, duplicateShapes, importFile, importModelFile, syncToolsFromLibrary, openShapeParams, booleanShapes, offsetShapes } from './actions';
 import { PANELS, applyConstraints, defaultLayout, deleteLayout, floatPanel, loadLayout, persistCurrent, restoreCurrent, saveLayout, savedLayouts, showPanel } from './layout';
+import { useNativeMenu } from './nativeMenu';
 
 const components = { viewport: Viewport, job: JobPanel, shapes: ShapesPanel, models: ModelsPanel, ops: OpsPanel, opedit: OpEditPanel, output: OutputPanel };
 const tabComponents = { locked: (p: IDockviewPanelHeaderProps) => <DockviewDefaultTab {...p} hideClose /> };
@@ -124,10 +125,12 @@ function Shell() {
     ] },
   ];
   void layoutTick;
+  // in Electron the same menus become the OS menu bar and the in-app titles are hidden; in a browser the in-app bar is the menu
+  const nativeMenu = useNativeMenu(menus);
 
   return (
     <div className="app">
-      <MenuBar menus={menus} right={<span className="stat muted">{ui.error ? <span className="err">{ui.error} </span> : null}{ui.generating ? 'generating… ' : ''}{ui.saving ? 'saving…' : ui.job ? `${ui.job.name} · ${ui.file}` : 'no job'}</span>} />
+      <MenuBar menus={nativeMenu ? [] : menus} right={<span className="stat muted">{ui.error ? <span className="err">{ui.error} </span> : null}{ui.generating ? 'generating… ' : ''}{ui.saving ? 'saving…' : ui.job ? `${ui.job.name} · ${ui.file}` : 'no job'}</span>} />
       <input ref={fileInput} type="file" accept=".dxf,.svg" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importFile(ui, f); e.target.value = ''; }} />
       <input ref={modelInput} type="file" accept=".stl,.obj" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importModelFile(ui, f); e.target.value = ''; }} />
       <input ref={imageInput} type="file" accept="image/png,image/jpeg" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) ui.openModal({ kind: 'heightmap', file: f }); e.target.value = ''; }} />

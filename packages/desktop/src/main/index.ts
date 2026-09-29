@@ -2,7 +2,7 @@
  * Electron main: start the local API (and, when packaged, the built viewer) on a localhost port, open a window on it.
  * Everything the app knows how to do lives in packages/server and the viewer; this file is the shell.
  */
-import { app, BrowserWindow, Menu, clipboard, dialog, shell } from 'electron';
+import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { startServer, defaultJobsDir } from '@cool-cam/server';
@@ -64,22 +64,42 @@ function mcpConfig() {
   return { mcpServers: { 'cool-cam': { command: process.execPath, args: [mcpEntry], env: { ELECTRON_RUN_AS_NODE: '1', COOL_CAM_JOBS_DIR: jobsDir } } } };
 }
 
-function buildMenu() {
+/** Menu definitions mirrored from the renderer (see viewer/src/nativeMenu.ts). */
+interface MenuItemSpec { id?: string; label?: string; sep?: boolean; disabled?: boolean; checked?: boolean; shortcut?: string; submenu?: MenuItemSpec[] }
+interface MenuSpec { label: string; items: MenuItemSpec[] }
+
+const shellItems = (isMac: boolean): Electron.MenuItemConstructorOptions[] => [
+  { label: 'Open jobs folder', click: () => shell.openPath(jobsDir) },
+  { label: 'Copy MCP config for Claude Code', click: () => { clipboard.writeText(JSON.stringify(mcpConfig(), null, 2)); dialog.showMessageBox({ message: 'MCP config copied', detail: `Paste it into a .mcp.json (or Claude Code's MCP settings). It points Claude at this app's MCP server and jobs folder:\n${jobsDir}` }); } },
+  { type: 'separator' }, isMac ? { role: 'close' } : { role: 'quit' },
+];
+
+/**
+ * Build the OS menu: the renderer's menus (File, Edit, Paths, View, Window) with the app's own items merged in: the shell
+ * entries under File, the text-editing roles under Edit (copy/paste in inputs need them), reload/devtools/zoom under
+ * View, and the standard window roles under Window. Item clicks are sent back to the renderer by id.
+ */
+function buildMenu(spec: MenuSpec[] = [], sender?: Electron.WebContents) {
   const isMac = process.platform === 'darwin';
+  const convert = (items: MenuItemSpec[]): Electron.MenuItemConstructorOptions[] => items.map(it => it.sep ? { type: 'separator' as const } : {
+    label: it.label ?? '', enabled: !it.disabled, type: it.checked !== undefined ? 'checkbox' as const : 'normal' as const, checked: !!it.checked,
+    submenu: it.submenu ? convert(it.submenu) : undefined,
+    click: it.submenu ? undefined : () => { if (it.id) sender?.send('menu:click', it.id); },
+  });
+  const byLabel = (label: string) => spec.find(m => m.label === label);
+  const own = (label: string): Electron.MenuItemConstructorOptions[] => convert(byLabel(label)?.items ?? []);
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
-    { label: 'File', submenu: [
-      { label: 'Open jobs folder', click: () => shell.openPath(jobsDir) },
-      { label: 'Copy MCP config for Claude Code', click: () => { clipboard.writeText(JSON.stringify(mcpConfig(), null, 2)); dialog.showMessageBox({ message: 'MCP config copied', detail: `Paste it into a .mcp.json (or Claude Code's MCP settings). It points Claude at this app's MCP server and jobs folder:\n${jobsDir}` }); } },
-      { type: 'separator' }, isMac ? { role: 'close' } : { role: 'quit' },
-    ] },
-    { role: 'editMenu' },
-    { label: 'View', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
-    { role: 'windowMenu' },
+    { label: 'File', submenu: [...own('File'), ...(own('File').length ? [{ type: 'separator' as const }] : []), ...shellItems(isMac)] },
+    { label: 'Edit', submenu: [...own('Edit'), { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
+    ...spec.filter(m => !['File', 'Edit', 'View', 'Window'].includes(m.label)).map(m => ({ label: m.label, submenu: convert(m.items) })),
+    { label: 'View', submenu: [...own('View'), { type: 'separator' }, { role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
+    { label: 'Window', role: 'window', submenu: [...own('Window'), { type: 'separator' }, { role: 'minimize' }, { role: 'zoom' }, ...(isMac ? [{ type: 'separator' as const }, { role: 'front' as const }] : [])] },
     { role: 'help', submenu: [{ label: 'Cool CAM on GitHub', click: () => shell.openExternal('https://github.com/harveymoon/COOL_CAM') }] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
+ipcMain.on('menu:set', (e, spec: MenuSpec[]) => { buildMenu(spec, e.sender); console.log(`[cool-cam] native menu: ${spec.map(m => `${m.label}(${m.items.length})`).join(' ')}`); });
 
 app.whenReady().then(async () => {
   buildMenu();

@@ -15,6 +15,19 @@ jobs/      job files written by the MCP server; the viewer watches this folder a
 examples/  sample drawings
 ```
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Open screen: projects with thumbnails](docs/screenshots/open-screen.jpg) | ![Default layout with a 3D job](docs/screenshots/default-layout.jpg) |
+| *Open screen: every project in the jobs folder with its last simulated state* | *Default layout: job and shapes on the left, operations and output on the right* |
+| ![Tool library grid](docs/screenshots/tool-library.jpg) | ![Operation parameters](docs/screenshots/operation-parameters.jpg) |
+| *Tool library: your cutters rendered in 3D, the same models that move in the simulation* | *Editing a 3D roughing operation: feeds, stepdown, machining boundary* |
+| ![Viewport only: dodecahedron](docs/screenshots/viewport-dodecahedron.jpg) | ![Viewport only: V-carved sign](docs/screenshots/viewport-sign.jpg) |
+| *Viewport alone: 3D rough and ball-nose finish of a half dodecahedron* | *Viewport alone: V-carved lettering and a plaque cut out with tabs* |
+| ![Wide viewport with a row of panels](docs/screenshots/layout-wide-viewport.jpg) | ![Compact arrangement](docs/screenshots/layout-compact.jpg) |
+| *Panels dock anywhere: a wide viewport over a row of panels* | *…or a compact arrangement; layouts can be saved from the Window menu* |
+
 ## Quick start
 
 **Just want the app?** Download the latest macOS build from [Releases](https://github.com/harveymoon/COOL_CAM/releases). It is not code-signed yet: on first launch right-click → Open.

@@ -11,9 +11,11 @@
     "test": "vitest run",
     "dev": "npm run dev -w @cool-cam/viewer",
     "mcp": "node packages/mcp/dist/index.js",
-    "typecheck": "tsc -b packages/core packages/post packages/sim packages/server packages/mcp && tsc -p packages/viewer --noEmit",
+    "typecheck": "tsc -b packages/core packages/post packages/sim packages/server packages/mcp && tsc -p packages/viewer --noEmit && tsc -p packages/desktop --noEmit",
     "build:viewer": "npm run build -w @cool-cam/viewer",
-    "start": "node packages/server/dist/cli.js"
+    "start": "node packages/server/dist/cli.js",
+    "dev:desktop": "npm run build -w @cool-cam/mcp && npm run dev -w @cool-cam/desktop",
+    "build:desktop": "npm run build && npm run dist -w @cool-cam/desktop"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

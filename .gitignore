@@ -6,3 +6,6 @@ jobs/*.gcode
 
 # live job the viewer and MCP server write on every edit
 jobs/current.json
+
+packages/desktop/out/
+packages/desktop/dist/

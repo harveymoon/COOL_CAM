@@ -1,0 +1,39 @@
+appId: com.harveymoon.coolcam
+productName: Cool CAM
+copyright: Copyright © 2026 Harvey Moon
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+extraResources:
+  # bundled tool defaults + optional extra fonts, next to the app
+  - from: ../../library
+    to: library
+  # the MCP server the app can run with ELECTRON_RUN_AS_NODE (see the File menu)
+  - from: ../mcp/dist
+    to: mcp
+asarUnpack:
+  - "**/node_modules/@cool-cam/**"
+npmRebuild: false
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [universal]
+    - target: zip
+      arch: [universal]
+  artifactName: ${productName}-${version}-mac.${ext}
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ${productName}-${version}-win.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  category: Graphics
+  target: [AppImage, deb]
+  artifactName: ${productName}-${version}-linux.${ext}

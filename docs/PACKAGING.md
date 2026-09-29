@@ -53,6 +53,18 @@ packages/
 - Code signing is a separate decision: unsigned builds trigger Gatekeeper and SmartScreen warnings; notarization needs an
   Apple developer account, Windows needs a certificate. Ship unsigned to yourself first.
 
+## Status
+
+- [x] 1. `packages/server` extracted; Vite mounts it as middleware; `/api/events` (SSE) replaces the Vite websocket for live reload.
+- [x] 2. `packages/desktop` (electron-vite 5, Electron 44, ESM main). `npm run dev:desktop` = HMR in an Electron window;
+      `npx electron packages/desktop` runs the production path (internal server + built renderer) without packaging.
+      `--screenshot out.png` captures the window and quits (smoke tests). Toolpath generation runs on a worker.
+- [ ] 3. `electron-builder` config is in place (`packages/desktop/electron-builder.yml`); first `npm run build:desktop`
+      run, app icons (`packages/desktop/build/icon.*`), per-platform smoke on Windows/Linux.
+- [ ] 4. MCP settings: the File menu already copies a `.mcp.json` entry (Electron as Node + bundled MCP server); a proper
+      settings screen with the jobs-folder chooser is still to do.
+- [ ] 5. CI matrix on tags, signing, auto-update.
+
 ## Order of work
 
 1. Extract `packages/server` from the Vite plugin; keep the plugin as a thin wrapper. No behaviour change; verifiable with

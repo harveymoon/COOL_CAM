@@ -21,7 +21,10 @@ examples/  sample drawings
 npm install
 npm run build          # builds core, post, sim, mcp
 npm test               # vitest
-npm run dev            # viewer on http://localhost:5173
+npm run dev            # viewer on http://localhost:5173 (browser, fastest loop)
+npm run dev:desktop    # the same viewer inside an Electron window, with HMR
+npm run build:viewer && npm start   # serve the built viewer to a browser (no Electron)
+npm run build:desktop  # package the desktop app (dmg / nsis / AppImage), see docs/PACKAGING.md
 ```
 
 ### Use it from Claude Code

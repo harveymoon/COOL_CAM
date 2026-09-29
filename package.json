@@ -1,7 +1,7 @@
 {
   "name": "cool-cam",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP-enabled open-source CAM for the Shapeoko HDM: 2.5D toolpaths, stock simulation, 3D web viewer.",
   "workspaces": [
     "packages/*"

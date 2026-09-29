@@ -40,6 +40,9 @@ packages/
 | `npm run dev` | Vite + your browser. Unchanged, fastest loop. |
 | `npm run dev:desktop` | electron-vite starts the same Vite renderer with HMR inside an Electron window; main runs `packages/server`. |
 | `npm run build:desktop` | electron-vite build, then electron-builder: dmg/zip (macOS universal), NSIS (Windows), AppImage + deb (Linux). |
+| `npm run install:desktop` | macOS: copies the built bundle to `~/Applications/Cool CAM.app`. Run the app from there, never from `packages/desktop/dist`: rebuilding into the folder of a running app crashes it. |
+
+Packaged-app diagnostics: the main process mirrors its console to `~/Library/Logs/Cool CAM/main.log` (server URL, jobs folder, library file, window load failures, renderer errors). The Help menu's "Copy MCP config" shows the jobs folder. `Cool CAM.app/Contents/MacOS/Cool CAM --screenshot out.png` runs headless-ish and quits after capturing the window.
 | CI | tests + typecheck on every push; packaging on a version tag with a macOS/Windows/Linux matrix. |
 
 ## What packaging forces (all small)

@@ -184,9 +184,17 @@ export function startServer(opts: ServerOptions): Promise<{ server: http.Server;
     let p = decodeURIComponent((req.url ?? '/').split('?')[0]);
     if (p.includes('..')) { res.statusCode = 400; res.end(); return; }
     let file = path.join(opts.staticDir, p);
-    if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(opts.staticDir, 'index.html'); // SPA fallback
-    res.setHeader('content-type', MIME[path.extname(file)] ?? 'application/octet-stream');
-    fs.createReadStream(file).on('error', () => { res.statusCode = 404; res.end(); }).pipe(res);
+    try {
+      if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(opts.staticDir, 'index.html'); // SPA fallback
+      // read synchronously so a permission problem (e.g. macOS refusing access to a folder) becomes a readable 500, not a dropped connection
+      const body = fs.readFileSync(file);
+      res.setHeader('content-type', MIME[path.extname(file)] ?? 'application/octet-stream');
+      res.end(body);
+    } catch (e) {
+      const msg = `Cool CAM cannot read its viewer files: ${(e as Error).message}`;
+      console.error(`[cool-cam] ${msg}`);
+      res.statusCode = 500; res.setHeader('content-type', 'text/plain'); res.end(msg);
+    }
   });
   return new Promise((resolve, reject) => {
     server.on('error', reject);

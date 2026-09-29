@@ -15,7 +15,8 @@
     "build:viewer": "npm run build -w @cool-cam/viewer",
     "start": "node packages/server/dist/cli.js",
     "dev:desktop": "npm run build -w @cool-cam/mcp && npm run dev -w @cool-cam/desktop",
-    "build:desktop": "npm run build && npm run dist -w @cool-cam/desktop"
+    "build:desktop": "npm run build && npm run dist -w @cool-cam/desktop",
+    "install:desktop": "rsync -a --delete \"packages/desktop/dist/mac-universal/Cool CAM.app/\" \"$HOME/Applications/Cool CAM.app/\" && echo \"installed to ~/Applications/Cool CAM.app\""
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

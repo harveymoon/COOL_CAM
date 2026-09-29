@@ -18,6 +18,19 @@ let win: BrowserWindow | null = null;
 let baseUrl = '';
 let jobsDir = '';
 
+/** Packaged app: mirror the main process console into ~/Library/Logs/Cool CAM/main.log (stdout goes nowhere under Finder). */
+let logFile = '';
+function setupLogging() {
+  if (!app.isPackaged) return;
+  try {
+    const dir = app.getPath('logs'); fs.mkdirSync(dir, { recursive: true }); logFile = path.join(dir, 'main.log');
+    const out = fs.createWriteStream(logFile, { flags: 'a' });
+    const wrap = (orig: (...a: unknown[]) => void, level: string) => (...a: unknown[]) => { orig(...a); try { out.write(`${new Date().toISOString()} ${level} ${a.map(x => x instanceof Error ? x.stack ?? x.message : typeof x === 'string' ? x : JSON.stringify(x)).join(' ')}\n`); } catch { /* ignore */ } };
+    console.log = wrap(console.log, 'info'); console.error = wrap(console.error, 'error'); console.warn = wrap(console.warn, 'warn');
+    console.log(`[cool-cam] ${app.getName()} ${app.getVersion()} · electron ${process.versions.electron} · ${process.platform} ${process.arch} · exe ${process.execPath}`);
+  } catch { /* logging is best-effort */ }
+}
+
 async function boot() {
   jobsDir = process.env.COOL_CAM_JOBS_DIR ?? (app.isPackaged ? defaultJobsDir(app.getPath('documents')) : path.join(resources, 'jobs'));
   // first launch of a packaged app: an empty jobs folder gets the bundled example jobs so there is something to look at
@@ -49,7 +62,10 @@ async function boot() {
   });
   win.on('closed', () => { win = null; });
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
-  await win.loadURL(baseUrl);
+  win.webContents.on('did-fail-load', (_e, code, desc, url, isMainFrame) => { if (isMainFrame) console.error(`[cool-cam] window failed to load ${url}: ${desc} (${code})`); });
+  win.webContents.on('console-message', (_e, level, message) => { if (level >= 2) console.error(`[cool-cam] renderer: ${message}`); });
+  try { await win.loadURL(baseUrl); }
+  catch (e) { throw new Error(`The window could not load the local viewer at ${baseUrl}: ${(e as Error).message}\n\nThe local server itself was running. Log: ${logFile || '(console)'}`); }
   if (isDev) win.webContents.openDevTools({ mode: 'detach' });
   // `--screenshot out.png`: capture the rendered window after the job has loaded and quit (smoke tests, headless checks)
   const shotIdx = process.argv.indexOf('--screenshot');
@@ -102,10 +118,11 @@ function buildMenu(spec: MenuSpec[] = [], sender?: Electron.WebContents) {
 ipcMain.on('menu:set', (e, spec: MenuSpec[]) => { buildMenu(spec, e.sender); console.log(`[cool-cam] native menu: ${spec.map(m => `${m.label}(${m.items.length})`).join(' ')}`); });
 
 app.whenReady().then(async () => {
+  setupLogging();
   buildMenu();
   await boot();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) boot(); });
-}).catch(e => { dialog.showErrorBox('Cool CAM failed to start', String(e?.stack ?? e)); app.quit(); });
+}).catch(e => { console.error('[cool-cam] failed to start', e); dialog.showErrorBox('Cool CAM failed to start', String(e?.stack ?? e)); app.quit(); });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 

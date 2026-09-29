@@ -45,9 +45,13 @@ export function useJobStore() {
 
   useEffect(() => { refreshList(); load(file); }, [file, refreshList, load]);
 
+  // live reload when anything (the MCP server, another editor) writes to the jobs folder: server-sent events from the local API,
+  // the same channel under Vite, Electron and the CLI
   useEffect(() => {
-    if (!import.meta.hot) return;
-    import.meta.hot.on('cool-cam:jobs-changed', () => { refreshList(); if (!dirty.current) load(file); });
+    let es: EventSource | null = null;
+    try { es = new EventSource('/api/events'); } catch { return; }
+    es.addEventListener('jobs-changed', () => { refreshList(); if (!dirty.current) load(file); });
+    return () => es?.close();
   }, [file, load, refreshList]);
 
   const persist = useCallback((j: Job, target: string) => {

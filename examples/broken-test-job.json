@@ -1,5 +1,5 @@
 {
- "name": "Test Job",
+ "name": "Broken test job (do not cut)",
  "units": "mm",
  "machineId": "shapeoko-hdm",
  "stock": {
@@ -42273,5 +42273,6 @@
     "scale": 1
    }
   }
- ]
+ ],
+ "notes": "Deliberately unsafe job kept as a demonstration of the simulation safety net: the cutout is 19 mm deep in 18 mm stock (below-stock errors) and the tool table includes a cutter that is not owned. Expect errors in the Output panel and a refused export."
 }

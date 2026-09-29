@@ -7,11 +7,13 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @cool-cam/core -w @cool-cam/post -w @cool-cam/sim -w @cool-cam/mcp",
+    "build": "npm run build -w @cool-cam/core -w @cool-cam/post -w @cool-cam/sim -w @cool-cam/server -w @cool-cam/mcp",
     "test": "vitest run",
     "dev": "npm run dev -w @cool-cam/viewer",
     "mcp": "node packages/mcp/dist/index.js",
-    "typecheck": "tsc -b packages/core packages/post packages/sim packages/mcp && tsc -p packages/viewer --noEmit"
+    "typecheck": "tsc -b packages/core packages/post packages/sim packages/server packages/mcp && tsc -p packages/viewer --noEmit",
+    "build:viewer": "npm run build -w @cool-cam/viewer",
+    "start": "node packages/server/dist/cli.js"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

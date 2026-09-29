@@ -92,10 +92,18 @@ Both derive from a heightmap of the placed mesh, so the workflow is strictly 3-a
 
 ## Roadmap
 
+Shipped so far: 2.5D pocket/profile/drill/keyhole, V-carve with flat clearing, 3D rough and finish with machining
+boundaries, feature extraction to proposed operations, rest machining, tabs (auto and placed), ramp and helix entries,
+G2/G3 arc fitting, a heightmap simulator with engagement checks that gates export, a per-user tool library with rendered
+cutters, and an MCP server over the whole pipeline.
+
+Next:
+
+- Desktop packaging (Electron; see `docs/PACKAGING.md`) with toolpath generation on a worker
+- Waterline finishing, pencil/corner passes, semi-finish after Z-level roughing
 - Adaptive / trochoidal clearing (constant engagement)
-- V-carve (medial axis) and engraving of text
-- STEP import (exact B-rep) and true rest machining from the simulated stock
-- Waterline finishing, pencil/corner passes, two-sided setups
-- Rest machining between tools
-- Lead-in/out arcs, G2/G3 arc output, arc fitting
-- Editable operations in the viewer, feed override, and sending to the machine
+- Drawing tools and node editing in the viewer; arrays
+- Two-sided setups, image trace, STEP import
+- Send-to-machine (serial to GRBL) and feed override
+- Backlog: drill dwell emission, V-carve flat pass returned as a second toolpath instead of a side channel, O-flute feed
+  bias for single flutes, `neckLength`/`taperAngle` tool fields, collet-change warnings from shank diameters

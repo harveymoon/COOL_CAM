@@ -111,6 +111,10 @@ button.mini { padding: 1px 6px; font-size: 11px; }
 .op-info .muted { display: inline-block; width: 46px; }
 .op.off .op-info { opacity: 0.5; }
 .list.tall { max-height: 360px; min-height: 200px; }
+/* panels whose list should take every pixel the panel has (Shapes): column flex, list grows, buttons stay put */
+.panel-body.fill { display: flex; flex-direction: column; overflow: hidden; }
+.panel-body.fill .list.fill { flex: 1 1 auto; max-height: none; min-height: 120px; }
+.panel-body.fill > .btns { flex: none; }
 .tool-lib { display: grid; grid-template-columns: 300px 1fr; gap: 12px; }
 .tabs.small button { padding: 4px 0; font-size: 10px; }
 .cube-hint { position: absolute; left: 50%; top: calc(50% + 120px); transform: translateX(-50%); font-family: var(--mono); font-size: 12px; color: var(--accent); background: rgba(13,15,19,0.85); border: 1px solid var(--border); padding: 4px 10px; pointer-events: none; }
@@ -230,7 +234,7 @@ button.mini { padding: 1px 6px; font-size: 11px; }
 .notice { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 2600; background: var(--panel-2); border: 1px solid var(--accent); padding: 8px 12px; display: flex; gap: 10px; align-items: center; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
 
 /* width/height link toggle in the shape editor */
-.wh-row { grid-template-columns: 1fr auto 1fr 1fr 1fr; align-items: end; }
+.wh-row { grid-template-columns: 1fr auto 1fr 1.4fr; align-items: end; }
 .link-toggle { padding: 4px 6px; margin-bottom: 4px; color: var(--muted); font-size: 14px; line-height: 1; }
 .link-toggle.on { color: var(--accent); border-color: var(--accent); }
 

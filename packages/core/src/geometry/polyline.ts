@@ -68,7 +68,7 @@ export function dedupe(p: Polyline, eps = 1e-6): Polyline {
 export function simplify(p: Polyline, tol = 1e-4): Polyline {
   const pts = dedupe(p, Math.max(1e-9, tol * 0.5)).points;
   if (pts.length < 3) return { points: pts, closed: p.closed };
-  const dp = (a: number, b: number, keep: boolean[]) => {
+  const dp = (pts: Vec2[], a: number, b: number, keep: boolean[]) => {
     const stack: [number, number][] = [[a, b]];
     while (stack.length) {
       const [i, j] = stack.pop()!; if (j - i < 2) continue;
@@ -84,16 +84,17 @@ export function simplify(p: Polyline, tol = 1e-4): Polyline {
   };
   const keep = new Array<boolean>(pts.length).fill(false);
   if (!p.closed) {
-    keep[0] = keep[pts.length - 1] = true; dp(0, pts.length - 1, keep);
+    keep[0] = keep[pts.length - 1] = true; dp(pts, 0, pts.length - 1, keep);
   } else {
     // anchor on the point farthest from pts[0], then the point farthest from that chord's ends
     let far = 0, fd = -1; for (let k = 1; k < pts.length; k++) { const d = dist(pts[0], pts[k]); if (d > fd) { fd = d; far = k; } }
-    keep[0] = keep[far] = true; dp(0, far, keep);
+    keep[0] = keep[far] = true; dp(pts, 0, far, keep);
     // second half wraps around: rotate indices so the segment far..0 is contiguous
     const rot = [...pts.slice(far), ...pts.slice(0, far + 1)];
     const keep2 = new Array<boolean>(rot.length).fill(false); keep2[0] = keep2[rot.length - 1] = true;
-    const saved = pts.slice(); pts.length = 0; pts.push(...rot); dp(0, rot.length - 1, keep2); pts.length = 0; pts.push(...saved);
-    for (let k = 1; k < rot.length - 1; k++) if (keep2[k]) keep[(far + k) % saved.length] = true;
+    // (no push(...rot): a call spread of a very long loop overflows the stack)
+    dp(rot, 0, rot.length - 1, keep2);
+    for (let k = 1; k < rot.length - 1; k++) if (keep2[k]) keep[(far + k) % pts.length] = true;
   }
   const out = pts.filter((_, k) => keep[k]);
   return { points: out.length >= (p.closed ? 3 : 2) ? out : pts, closed: p.closed };

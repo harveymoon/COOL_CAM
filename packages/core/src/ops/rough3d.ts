@@ -13,6 +13,8 @@ export function generateRough3D(job: Job, op: Rough3DOp): Toolpath {
   const tool = ctx.tool;
   const stepover = op.stepover && op.stepover > 0 ? Math.min(op.stepover, tool.diameter * 0.95) : tool.diameter * 0.4;
   const res = op.resolution ?? Math.min(0.5, Math.max(0.15, stepover / 4));
+  // declared before the first early return: done() records it on the toolpath
+  const stepdown = op.depthPerPass && op.depthPerPass > 0 ? op.depthPerPass : tool.diameter;
   const ml = new MoveList(ctx);
   let surf;
   try { surf = surfaceFor(job, op, tool, res); } catch (e) { ctx.warnings.push((e as Error).message); return done(); }
@@ -21,7 +23,6 @@ export function generateRough3D(job: Job, op: Rough3DOp): Toolpath {
   // Z levels: from one stepdown below the stock top down to the model base (or the op depth limit), last level exact.
   // Levels always start at the stock top so every cut engages one stepdown; the Z window (startDepth) only decides *which cells*
   // are machined: cells whose finished surface lies above zStart are left alone at every level.
-  const stepdown = op.depthPerPass && op.depthPerPass > 0 ? op.depthPerPass : tool.diameter;
   const zBottom = Math.max(modelBase + (op.stockToLeave ?? 0.3), ctx.stockTop - op.depth, ctx.stockBottom);
   const levels: number[] = [];
   const zStart = ctx.stockTop - (op.startDepth ?? 0);

@@ -66,3 +66,15 @@ describe('parametric scaling', () => {
     expect(scaleParams({ kind: 'text', text: 'a', font: 'f', size: 1, x: 0, y: 0, align: 'left' }, 0, 0, 2, 2)).toBeUndefined();
   });
 });
+
+describe('simplify on very long loops', () => {
+  it('handles a closed loop of 300k points without overflowing the call stack', async () => {
+    const { simplify } = await import('../src/geometry/polyline.js');
+    const n = 300_000; const points = [];
+    for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; const r = 50 + 5 * Math.sin(7 * a); points.push({ x: r * Math.cos(a), y: r * Math.sin(a) }); }
+    const out = simplify({ points, closed: true }, 0.05);
+    expect(out.closed).toBe(true);
+    expect(out.points.length).toBeGreaterThan(20);
+    expect(out.points.length).toBeLessThan(n / 10);
+  });
+});

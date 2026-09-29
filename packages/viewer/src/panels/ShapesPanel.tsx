@@ -10,14 +10,14 @@ export function ShapesPanel() {
   if (!job) return <div className="empty">No job.</div>;
   const toggle = (id: string, multi: boolean) => { setSelectedShapes(multi ? (selectedShapes.includes(id) ? selectedShapes.filter(x => x !== id) : [...selectedShapes, id]) : [id]); ui.setParamsMode('shape'); };
   return (
-    <div className="panel-body">
+    <div className="panel-body fill">
       <div className="btns" style={{ marginBottom: 6 }}>
         <button onClick={() => ui.openModal({ kind: 'addShape' })}>+ Shape</button>
         <button className="primary" onClick={() => openShapeParams(ui, selectedShapes.length ? selectedShapes : job.shapes.map(s => s.id))} disabled={!job.shapes.length}>Edit</button>
         <button onClick={() => duplicateShapes(ui)} disabled={!selectedShapes.length}>Duplicate</button>
         <button className="danger" onClick={() => deleteShapes(ui)} disabled={!selectedShapes.length}>Delete</button>
       </div>
-      <div className="list">
+      <div className="list fill">
         {job.shapes.length === 0 && <div className="empty">No shapes. File → Import, or Edit → Add shape.</div>}
         {job.shapes.map(s => {
           const bb = bbox(s.polyline); const sel = selectedShapes.includes(s.id);

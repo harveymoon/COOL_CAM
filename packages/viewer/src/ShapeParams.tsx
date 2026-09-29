@@ -12,7 +12,7 @@ export function ShapeParams() {
   const ui = useUi();
   const job = ui.job!;
   const sel = job.shapes.filter(s => ui.selectedShapes.includes(s.id));
-  const [rel, setRel] = useState<{ dx?: number; dy?: number; scale?: number; rot?: number; off?: number }>({ dx: 0, dy: 0, scale: 1, rot: 0, off: 1 });
+  const [off, setOff] = useState<number | undefined>(1);
   /** Width/height linked (keep aspect) or independent. */
   const [linked, setLinked] = useState<boolean>(() => { try { return localStorage.getItem('coolcam.shape.linkWH') !== '0'; } catch { return true; } });
   const toggleLinked = () => setLinked(v => { try { localStorage.setItem('coolcam.shape.linkWH', v ? '0' : '1'); } catch { /* ignore */ } return !v; });
@@ -28,50 +28,35 @@ export function ShapeParams() {
       </div>
 
       <div className="op-section">
-        <div className="op-section-title">Position (absolute)</div>
+        <div className="op-section-title">Position</div>
         <div className="grid4">
-          <Num label="min X" value={r2(bb.minX)} step={1} onChange={v => v !== undefined && transformShapes(ui, { dx: v - bb.minX })} />
-          <Num label="min Y" value={r2(bb.minY)} step={1} onChange={v => v !== undefined && transformShapes(ui, { dy: v - bb.minY })} />
-          <Num label="centre X" value={r2(cx)} step={1} onChange={v => v !== undefined && transformShapes(ui, { dx: v - cx })} />
-          <Num label="centre Y" value={r2(cy)} step={1} onChange={v => v !== undefined && transformShapes(ui, { dy: v - cy })} />
+          <Num label="center X" value={r2(cx)} step={1} onChange={v => v !== undefined && transformShapes(ui, { dx: v - cx })} />
+          <Num label="center Y" value={r2(cy)} step={1} onChange={v => v !== undefined && transformShapes(ui, { dy: v - cy })} />
+          <div className="row" style={{ gridColumn: 'span 2', alignSelf: 'end' }}><span className="lbl">&nbsp;</span><span className="btns" style={{ marginTop: 0 }}>
+            <button onClick={() => transformShapes(ui, { dx: (sb.x0 + sb.x1) / 2 - cx, dy: (sb.y0 + sb.y1) / 2 - cy })}>Center on stock</button>
+            <button onClick={() => transformShapes(ui, { mirrorX: true })}>Mirror X</button>
+            <button onClick={() => transformShapes(ui, { mirrorY: true })}>Mirror Y</button>
+          </span></div>
         </div>
+      </div>
+
+      <div className="op-section">
+        <div className="op-section-title">Scale</div>
         <div className="grid4 wh-row">
-          <Num label="width" value={r2(w)} step={1} hint={linked ? 'scales about the centre, keeping the aspect ratio' : 'scales X only, about the centre'} onChange={v => v && w > 0 && transformShapes(ui, linked ? { scale: v / w } : { scaleX: v / w })} />
+          <Num label="width" value={r2(w)} step={1} hint={linked ? 'scales about the center, keeping the aspect ratio' : 'scales X only, about the center'} onChange={v => v && w > 0 && transformShapes(ui, linked ? { scale: v / w } : { scaleX: v / w })} />
           <button className={`link-toggle${linked ? ' on' : ''}`} onClick={toggleLinked} title={linked ? 'Width and height are linked (aspect ratio kept). Click to size them independently.' : 'Width and height are independent. Click to link them.'}>{linked ? '⚭' : '⚬'}</button>
-          <Num label="height" value={r2(h)} step={1} hint={linked ? 'scales about the centre, keeping the aspect ratio' : 'scales Y only, about the centre'} onChange={v => v && h > 0 && transformShapes(ui, linked ? { scale: v / h } : { scaleY: v / h })} />
-          <div className="row"><span className="lbl">area</span><span className="mono">{single?.polyline.closed ? Math.round(Math.abs(signedArea(single.polyline))) : '—'}</span></div>
-          <div className="row"><span className="lbl">length</span><span className="mono">{single ? Math.round(perimeter(single.polyline)) : '—'}</span></div>
-        </div>
-        <div className="btns">
-          <button onClick={() => transformShapes(ui, { dx: (sb.x0 + sb.x1) / 2 - cx, dy: (sb.y0 + sb.y1) / 2 - cy })}>Center on stock</button>
-          <button onClick={() => transformShapes(ui, { dx: sb.x0 + 5 - bb.minX, dy: sb.y0 + 5 - bb.minY })}>Corner +5</button>
-          <button onClick={() => transformShapes(ui, { mirrorX: true })}>Mirror X</button>
-          <button onClick={() => transformShapes(ui, { mirrorY: true })}>Mirror Y</button>
+          <Num label="height" value={r2(h)} step={1} hint={linked ? 'scales about the center, keeping the aspect ratio' : 'scales Y only, about the center'} onChange={v => v && h > 0 && transformShapes(ui, linked ? { scale: v / h } : { scaleY: v / h })} />
+          <div className="row"><span className="lbl">area · length</span><span className="mono">{single?.polyline.closed ? Math.round(Math.abs(signedArea(single.polyline))) : '—'} · {single ? Math.round(perimeter(single.polyline)) : '—'}</span></div>
         </div>
       </div>
 
       {single?.params && <PrimitiveParams shape={single} />}
 
       <div className="op-section">
-        <div className="op-section-title">Relative transform</div>
-        <div className="grid4">
-          <Num label="dx" value={rel.dx} step={1} onChange={v => setRel(s => ({ ...s, dx: v }))} />
-          <Num label="dy" value={rel.dy} step={1} onChange={v => setRel(s => ({ ...s, dy: v }))} />
-          <Num label="scale" value={rel.scale} step={0.01} onChange={v => setRel(s => ({ ...s, scale: v }))} />
-          <Num label="rotate °" value={rel.rot} step={1} onChange={v => setRel(s => ({ ...s, rot: v }))} />
-        </div>
-        <div className="btns">
-          <button className="primary" onClick={() => { transformShapes(ui, { dx: rel.dx ?? 0, dy: rel.dy ?? 0, scale: rel.scale ?? 1, rotateDeg: rel.rot ?? 0 }); setRel(s => ({ ...s, dx: 0, dy: 0, scale: 1, rot: 0 })); }}>Apply</button>
-          <button onClick={() => transformShapes(ui, { scale: 25.4 })} title="inch → mm">× 25.4</button>
-          <button onClick={() => transformShapes(ui, { scale: 1 / 25.4 })} title="mm → inch">÷ 25.4</button>
-        </div>
-      </div>
-
-      <div className="op-section">
         <div className="op-section-title">Modify</div>
         <div className="grid2">
-          <Num label="offset mm" value={rel.off} step={0.5} hint="positive grows, negative shrinks; creates new shapes" onChange={v => setRel(s => ({ ...s, off: v }))} />
-          <div className="row"><span className="lbl">&nbsp;</span><button onClick={() => offsetShapes(ui, rel.off ?? 1)}>Offset</button></div>
+          <Num label="offset mm" value={off} step={0.5} hint="positive grows, negative shrinks; creates new shapes" onChange={setOff} />
+          <div className="row"><span className="lbl">&nbsp;</span><button onClick={() => offsetShapes(ui, off ?? 1)}>Offset</button></div>
         </div>
         <div className="btns">
           <button onClick={() => booleanShapes(ui, 'union')} disabled={sel.length < 2}>Union</button>
@@ -92,7 +77,7 @@ function PrimitiveParams({ shape }: { shape: Shape }) {
   return (
     <div className="op-section">
       <div className="op-section-title">{title} parameters</div>
-      {p.kind === 'rect' && <><div className="grid2"><Num label="x (left)" value={p.x} step={1} onChange={v => set({ x: v ?? 0 })} /><Num label="y (bottom)" value={p.y} step={1} onChange={v => set({ y: v ?? 0 })} /></div><div className="grid3"><Num label="width" value={p.w} step={1} onChange={v => set({ w: v ?? 1 })} /><Num label="height" value={p.h} step={1} onChange={v => set({ h: v ?? 1 })} /><Num label="corner r" value={p.r} step={0.5} onChange={v => set({ r: v ?? 0 })} /></div></>}
+      {p.kind === 'rect' && <div className="grid3"><Num label="x (left)" value={p.x} step={1} onChange={v => set({ x: v ?? 0 })} /><Num label="y (bottom)" value={p.y} step={1} onChange={v => set({ y: v ?? 0 })} /><Num label="corner r" value={p.r} step={0.5} onChange={v => set({ r: v ?? 0 })} /></div>}
       {p.kind === 'circle' && <div className="grid3"><Num label="cx" value={p.cx} step={1} onChange={v => set({ cx: v ?? 0 })} /><Num label="cy" value={p.cy} step={1} onChange={v => set({ cy: v ?? 0 })} /><Num label="diameter" value={p.d} step={0.5} onChange={v => set({ d: v ?? 1 })} /></div>}
       {p.kind === 'regular_polygon' && <><div className="grid2"><Num label="cx" value={p.cx} step={1} onChange={v => set({ cx: v ?? 0 })} /><Num label="cy" value={p.cy} step={1} onChange={v => set({ cy: v ?? 0 })} /></div><div className="grid3"><Num label="sides" value={p.sides} step={1} onChange={v => set({ sides: Math.max(3, Math.round(v ?? 3)) })} /><Num label="diameter" value={p.d} step={0.5} onChange={v => set({ d: v ?? 1 })} /><Num label="rot °" value={p.rot} step={1} onChange={v => set({ rot: v ?? 0 })} /></div></>}
       {p.kind === 'slot' && <><div className="grid2"><Num label="x1" value={p.x1} step={1} onChange={v => set({ x1: v ?? 0 })} /><Num label="y1" value={p.y1} step={1} onChange={v => set({ y1: v ?? 0 })} /></div><div className="grid3"><Num label="x2" value={p.x2} step={1} onChange={v => set({ x2: v ?? 0 })} /><Num label="y2" value={p.y2} step={1} onChange={v => set({ y2: v ?? 0 })} /><Num label="width" value={p.w} step={0.5} onChange={v => set({ w: v ?? 1 })} /></div></>}

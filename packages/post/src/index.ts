@@ -93,8 +93,10 @@ export function postGrbl(job: Job, toolpaths: Toolpath[], opts: PostOptions = {}
       curTool = tp.toolId; toolChanges++;
       const rpm = Math.round(tp.rpm);
       if (rpm < machine.spindle.minRpm || rpm > machine.spindle.maxRpm) warnings.push(`${tp.opName}: ${rpm} rpm is outside the spindle range ${machine.spindle.minRpm}-${machine.spindle.maxRpm}.`);
-      const maxF = Math.max(...tp.moves.map(m => m.f ?? 0)); if (maxF > machine.maxFeed.xy) warnings.push(`${tp.opName}: feed ${maxF} mm/min exceeds the machine maximum ${machine.maxFeed.xy}; GRBL will clamp it.`);
-      const maxPlunge = Math.max(...tp.moves.filter(m => m.kind === 'plunge').map(m => m.f ?? 0), 0); if (maxPlunge > machine.maxFeed.z) warnings.push(`${tp.opName}: plunge feed ${maxPlunge} mm/min exceeds the Z maximum ${machine.maxFeed.z}.`);
+      // plain loops: a call spread over a large finish toolpath (hundreds of thousands of moves) overflows the stack
+      let maxF = 0, maxPlunge = 0; for (const m of tp.moves) { const f = m.f ?? 0; if (f > maxF) maxF = f; if (m.kind === 'plunge' && f > maxPlunge) maxPlunge = f; }
+      if (maxF > machine.maxFeed.xy) warnings.push(`${tp.opName}: feed ${maxF} mm/min exceeds the machine maximum ${machine.maxFeed.xy}; GRBL will clamp it.`);
+      if (maxPlunge > machine.maxFeed.z) warnings.push(`${tp.opName}: plunge feed ${maxPlunge} mm/min exceeds the Z maximum ${machine.maxFeed.z}.`);
       emit(`M3 S${rpm}`);
       if (opts.spindleDwell !== false) emit(`G4 P${machine.spindle.spinUpSeconds}`);
       spindleOn = true;

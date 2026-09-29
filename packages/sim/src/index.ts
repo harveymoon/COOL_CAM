@@ -63,7 +63,7 @@ export class StockSim {
     const W = job.stock.width + 2 * margin, H = job.stock.length + 2 * margin;
     // auto resolution targets ~400k cells but never coarser than half the smallest cutter radius, so a small tool's footprint
     // is still several cells wide and the rapid/engagement checks stay meaningful on a big stock
-    const minRadius = Math.min(...toolpaths.filter(tp => tp.moves.length).map(tp => { try { return getTool(job, tp.toolId).diameter / 2; } catch { return Infinity; } }), Infinity);
+    let minRadius = Infinity; for (const tp of toolpaths) { if (!tp.moves.length) continue; try { minRadius = Math.min(minRadius, getTool(job, tp.toolId).diameter / 2); } catch { /* unknown tool: ignored here, reported by the post */ } }
     const res = opts.resolution ?? Math.max(0.1, Math.min(1.0, Math.sqrt((W * H) / 400000), isFinite(minRadius) ? minRadius / 2 : 1.0));
     this.res = res;
     this.x0 = b.x0 - margin; this.y0 = b.y0 - margin;

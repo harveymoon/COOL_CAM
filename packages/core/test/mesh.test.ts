@@ -188,6 +188,14 @@ describe('machining boundary', () => {
     const [r] = generateToolpaths(job);
     expect(maxRadius(r)).toBeGreaterThan(35 + 3); expect(maxRadius(r)).toBeLessThan(35 + 6 + 3.175 + 0.5);
   });
+  it('shapes boundary with no shapes on the op warns instead of throwing', () => {
+    const job = coaster();
+    job.ops = [{ id: 'r', type: 'rough3d', toolId: 't201', modelId: 'c', shapeIds: [], boundaryMode: 'shapes', depth: 12, depthPerPass: 4, stepover: 3 } as Rough3DOp];
+    const [r] = generateToolpaths(job);
+    expect(r.moves.length).toBe(0);
+    expect(r.warnings.join(' ')).toMatch(/at least one closed shape/);
+    expect(r.warnings.join(' ')).not.toMatch(/Generation failed/);
+  });
   it('shapes boundary restricts finishing to a drawn region', () => {
     const job = coaster();
     job.shapes.push({ id: 'win', polyline: rect(47.5 - 12, 47.5 - 12, 24, 24) });

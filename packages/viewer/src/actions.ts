@@ -1,4 +1,4 @@
-import { uid, bbox, parseDxf, parseSvg, stockBounds, feedsAndSpeeds, parseStl, parseObj, placementFor, IDENTITY_PLACEMENT, proposeOperations, polylineFromParams, translateParams, union, difference, intersection, offsetPolygons, normalize, signedArea, newJob } from '@cool-cam/core';
+import { uid, bbox, parseDxf, parseSvg, stockBounds, feedsAndSpeeds, parseStl, parseObj, placementFor, IDENTITY_PLACEMENT, proposeOperations, polylineFromParams, translateParams, scaleParams, union, difference, intersection, offsetPolygons, normalize, signedArea, newJob } from '@cool-cam/core';
 import type { Op, Shape, MaterialId, Tool, Model, ShapeParams, Polyline } from '@cool-cam/core';
 import type { Ui } from './ui';
 import { showPanel } from './layout';
@@ -126,22 +126,28 @@ export function openShapeParams(ui: Ui, ids: string[]) {
   const api = ui.dockRef.current; if (api) showPanel(api, 'opedit');
 }
 
-export interface TransformOpts { dx?: number; dy?: number; scale?: number; rotateDeg?: number; mirrorX?: boolean; mirrorY?: boolean; aboutCenter?: boolean }
-/** Transform the selected shapes (or all when none selected). Pure translations keep primitive parameters editable. */
+export interface TransformOpts { dx?: number; dy?: number; scale?: number; /** per-axis scale (overrides `scale` on that axis) */ scaleX?: number; scaleY?: number; rotateDeg?: number; mirrorX?: boolean; mirrorY?: boolean; aboutCenter?: boolean }
+/**
+ * Transform the selected shapes (or all when none selected). Pure translations keep primitive parameters; scaling keeps
+ * them when the primitive can express the result (rectangles always, circles/polygons/slots only uniformly).
+ */
 export function transformShapes(ui: Ui, o: TransformOpts) {
   const job = ui.job; if (!job) return;
   const ids = new Set((ui.selectedShapes.length ? ui.selectedShapes : job.shapes.map(s => s.id)));
   const targets = job.shapes.filter(s => ids.has(s.id)); if (!targets.length) return;
   const bb = bbox(targets.map(s => s.polyline)); const c = o.aboutCenter === false ? { x: 0, y: 0 } : { x: (bb.minX + bb.maxX) / 2, y: (bb.minY + bb.maxY) / 2 };
-  const dx = o.dx ?? 0, dy = o.dy ?? 0, k = o.scale ?? 1, th = ((o.rotateDeg ?? 0) * Math.PI) / 180, cs = Math.cos(th), sn = Math.sin(th);
+  const dx = o.dx ?? 0, dy = o.dy ?? 0, kx = o.scaleX ?? o.scale ?? 1, ky = o.scaleY ?? o.scale ?? 1, th = ((o.rotateDeg ?? 0) * Math.PI) / 180, cs = Math.cos(th), sn = Math.sin(th);
   const mx = o.mirrorX ? -1 : 1, my = o.mirrorY ? -1 : 1;
-  const pureMove = k === 1 && th === 0 && mx === 1 && my === 1;
-  const f = (p: { x: number; y: number }) => { const x = (p.x - c.x) * k * mx, y = (p.y - c.y) * k * my; return { x: c.x + x * cs - y * sn + dx, y: c.y + x * sn + y * cs + dy }; };
+  const pureMove = kx === 1 && ky === 1 && th === 0 && mx === 1 && my === 1;
+  const pureScale = th === 0 && mx === 1 && my === 1 && dx === 0 && dy === 0;
+  const f = (p: { x: number; y: number }) => { const x = (p.x - c.x) * kx * mx, y = (p.y - c.y) * ky * my; return { x: c.x + x * cs - y * sn + dx, y: c.y + x * sn + y * cs + dy }; };
   ui.setJob(j => ({ ...j, shapes: j.shapes.map(s => {
     if (!ids.has(s.id)) return s;
     const points = s.polyline.points.map(f); if (mx * my < 0) points.reverse();
-    const params = s.params ? (pureMove ? translateParams(s.params, dx, dy) : undefined) : undefined;
-    return { ...s, polyline: { closed: s.polyline.closed, points }, params };
+    const params = s.params ? (pureMove ? translateParams(s.params, dx, dy) : pureScale ? scaleParams(s.params, c.x, c.y, kx, ky) : undefined) : undefined;
+    // a parametric shape is rebuilt from its parameters so the outline stays exact (corner arcs, circle sampling)
+    const pl = params && params.kind !== 'text' ? polylineFromParams(params) : null;
+    return { ...s, polyline: pl ?? { closed: s.polyline.closed, points }, params };
   }) }));
 }
 

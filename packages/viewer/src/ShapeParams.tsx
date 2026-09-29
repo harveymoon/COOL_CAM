@@ -13,6 +13,9 @@ export function ShapeParams() {
   const job = ui.job!;
   const sel = job.shapes.filter(s => ui.selectedShapes.includes(s.id));
   const [rel, setRel] = useState<{ dx?: number; dy?: number; scale?: number; rot?: number; off?: number }>({ dx: 0, dy: 0, scale: 1, rot: 0, off: 1 });
+  /** Width/height linked (keep aspect) or independent. */
+  const [linked, setLinked] = useState<boolean>(() => { try { return localStorage.getItem('coolcam.shape.linkWH') !== '0'; } catch { return true; } });
+  const toggleLinked = () => setLinked(v => { try { localStorage.setItem('coolcam.shape.linkWH', v ? '0' : '1'); } catch { /* ignore */ } return !v; });
   if (!sel.length) return null;
   const bb = bbox(sel.map(s => s.polyline)); const sb = stockBounds(job.stock);
   const w = bb.maxX - bb.minX, h = bb.maxY - bb.minY; const cx = (bb.minX + bb.maxX) / 2, cy = (bb.minY + bb.maxY) / 2;
@@ -32,9 +35,10 @@ export function ShapeParams() {
           <Num label="centre X" value={r2(cx)} step={1} onChange={v => v !== undefined && transformShapes(ui, { dx: v - cx })} />
           <Num label="centre Y" value={r2(cy)} step={1} onChange={v => v !== undefined && transformShapes(ui, { dy: v - cy })} />
         </div>
-        <div className="grid4">
-          <Num label="width" value={r2(w)} step={1} hint="scales about the centre" onChange={v => v && w > 0 && transformShapes(ui, { scale: v / w })} />
-          <Num label="height" value={r2(h)} step={1} hint="scales about the centre" onChange={v => v && h > 0 && transformShapes(ui, { scale: v / h })} />
+        <div className="grid4 wh-row">
+          <Num label="width" value={r2(w)} step={1} hint={linked ? 'scales about the centre, keeping the aspect ratio' : 'scales X only, about the centre'} onChange={v => v && w > 0 && transformShapes(ui, linked ? { scale: v / w } : { scaleX: v / w })} />
+          <button className={`link-toggle${linked ? ' on' : ''}`} onClick={toggleLinked} title={linked ? 'Width and height are linked (aspect ratio kept). Click to size them independently.' : 'Width and height are independent. Click to link them.'}>{linked ? '⚭' : '⚬'}</button>
+          <Num label="height" value={r2(h)} step={1} hint={linked ? 'scales about the centre, keeping the aspect ratio' : 'scales Y only, about the centre'} onChange={v => v && h > 0 && transformShapes(ui, linked ? { scale: v / h } : { scaleY: v / h })} />
           <div className="row"><span className="lbl">area</span><span className="mono">{single?.polyline.closed ? Math.round(Math.abs(signedArea(single.polyline))) : '—'}</span></div>
           <div className="row"><span className="lbl">length</span><span className="mono">{single ? Math.round(perimeter(single.polyline)) : '—'}</span></div>
         </div>

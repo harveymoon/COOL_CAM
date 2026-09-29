@@ -44,6 +44,21 @@ export function polylineFromParams(p: ShapeParams): Polyline | null {
     default: return null;
   }
 }
+/**
+ * Scale a shape's parameters about (cx, cy) by kx / ky. Returns undefined when the primitive cannot express the result
+ * (a circle or regular polygon scaled non-uniformly, text), in which case the caller drops the parameters.
+ */
+export function scaleParams(p: ShapeParams, cx: number, cy: number, kx: number, ky: number): ShapeParams | undefined {
+  const uniform = Math.abs(kx - ky) < 1e-9;
+  const sx = (x: number) => cx + (x - cx) * kx, sy = (y: number) => cy + (y - cy) * ky;
+  switch (p.kind) {
+    case 'rect': { const x0 = Math.min(sx(p.x), sx(p.x + p.w)), y0 = Math.min(sy(p.y), sy(p.y + p.h)); return { ...p, x: x0, y: y0, w: p.w * Math.abs(kx), h: p.h * Math.abs(ky), r: Math.min(p.r * Math.min(Math.abs(kx), Math.abs(ky)), (p.w * Math.abs(kx)) / 2, (p.h * Math.abs(ky)) / 2) }; }
+    case 'circle': return uniform ? { ...p, cx: sx(p.cx), cy: sy(p.cy), d: p.d * Math.abs(kx) } : undefined;
+    case 'regular_polygon': return uniform ? { ...p, cx: sx(p.cx), cy: sy(p.cy), d: p.d * Math.abs(kx) } : undefined;
+    case 'slot': return uniform ? { ...p, x1: sx(p.x1), y1: sy(p.y1), x2: sx(p.x2), y2: sy(p.y2), w: p.w * Math.abs(kx) } : undefined;
+    default: return undefined;
+  }
+}
 /** Translate a shape's parameters (used when moving parametric shapes). */
 export function translateParams(p: ShapeParams, dx: number, dy: number): ShapeParams {
   switch (p.kind) {

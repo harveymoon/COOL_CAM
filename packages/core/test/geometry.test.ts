@@ -55,3 +55,14 @@ describe('importers', () => {
     expect(b.minX).toBeCloseTo(0, 1); expect(b.maxX).toBeCloseTo(50.8, 1); expect(b.maxY).toBeCloseTo(25.4, 1);
   });
 });
+
+describe('parametric scaling', () => {
+  it('rectangles stay parametric under per-axis scaling, circles only under uniform scaling', async () => {
+    const { scaleParams } = await import('../src/index.js');
+    const r = scaleParams({ kind: 'rect', x: 10, y: 10, w: 40, h: 20, r: 5 }, 30, 20, 2, 0.5);
+    expect(r).toEqual({ kind: 'rect', x: -10, y: 15, w: 80, h: 10, r: 2.5 });
+    expect(scaleParams({ kind: 'circle', cx: 5, cy: 5, d: 10 }, 0, 0, 2, 2)).toEqual({ kind: 'circle', cx: 10, cy: 10, d: 20 });
+    expect(scaleParams({ kind: 'circle', cx: 5, cy: 5, d: 10 }, 0, 0, 2, 1)).toBeUndefined();
+    expect(scaleParams({ kind: 'text', text: 'a', font: 'f', size: 1, x: 0, y: 0, align: 'left' }, 0, 0, 2, 2)).toBeUndefined();
+  });
+});

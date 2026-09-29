@@ -1,5 +1,5 @@
 {
- "name": "Test_Star",
+ "name": "Test_Texture",
  "units": "mm",
  "machineId": "shapeoko-hdm",
  "stock": {
@@ -13,20 +13,20 @@
  "clearanceZ": 3,
  "tools": [
   {
-   "id": "t201",
-   "number": 201,
-   "name": "#201 1/4\" square 3FL",
-   "type": "endmill",
-   "diameter": 6.35,
-   "flutes": 3,
-   "fluteLength": 19.05,
+   "id": "am46369k",
+   "number": 369,
+   "name": "Amana 46369-K 1/8\" ball nose Spektra",
+   "type": "ballnose",
+   "diameter": 3.175,
+   "flutes": 2,
+   "fluteLength": 12.7,
    "shankDiameter": 6.35,
-   "overallLength": 63.5,
+   "overallLength": 50.8,
    "rpm": 18000,
-   "feed": 2000,
-   "plunge": 600,
-   "sku": "Nomad Tools #201",
-   "notes": "General purpose upcut. Wood, plastics, soft metals."
+   "feed": 1200,
+   "plunge": 400,
+   "sku": "Amana Tool 46369-K",
+   "notes": "Solid carbide Spektra-coated 2-flute up-cut ball nose spiral: 1/16 in radius (1/8 in dia), 1/2 in cut length, 1/4 in shank, 2 in overall. Wood and plastics."
   },
   {
    "id": "e253",
@@ -43,22 +43,6 @@
    "plunge": 200,
    "sku": "EANOSIC E253",
    "notes": "1/4 shank, 1 in reach (necked), 2 flutes. Fine 3D detail."
-  },
-  {
-   "id": "am46369k",
-   "number": 369,
-   "name": "Amana 46369-K 1/8\" upcut Spektra",
-   "type": "endmill",
-   "diameter": 3.175,
-   "flutes": 2,
-   "fluteLength": 12.7,
-   "shankDiameter": 6.35,
-   "overallLength": 50.8,
-   "rpm": 18000,
-   "feed": 1200,
-   "plunge": 400,
-   "sku": "Amana Tool 46369-K",
-   "notes": "Spektra coated 2-flute spiral upcut, 1/4 shank, 1/2 in cutting length. Wood and plastics."
   }
  ],
  "shapes": [
@@ -66,6 +50,7 @@
    "id": "interference_pattern_level_z-0.08_1",
    "name": "level z-0.08",
    "polyline": {
+    "closed": true,
     "points": [
      {
       "x": 80,
@@ -83,8 +68,7 @@
       "x": 80,
       "y": 0
      }
-    ],
-    "closed": true
+    ]
    }
   },
   {
@@ -5352,154 +5336,75 @@
    "polyline": {
     "points": [
      {
-      "x": 7.5,
-      "y": 7.5
+      "x": 9.500000000000007,
+      "y": 9.500000000000007
      },
      {
-      "x": 67.5,
-      "y": 7.5
+      "x": 70.5,
+      "y": 9.500000000000007
      },
      {
-      "x": 67.5,
-      "y": 67.5
+      "x": 70.5,
+      "y": 70.5
      },
      {
-      "x": 7.5,
-      "y": 67.5
+      "x": 9.500000000000007,
+      "y": 70.5
      }
     ],
     "closed": true
    },
    "params": {
     "kind": "rect",
-    "x": 7.5,
-    "y": 7.5,
-    "w": 60,
-    "h": 60,
+    "x": 9.500000000000007,
+    "y": 9.500000000000007,
+    "w": 60.999999999999986,
+    "h": 60.999999999999986,
     "r": 0
    }
   }
  ],
  "ops": [
   {
-   "id": "interference_pattern_rough",
-   "name": "3D rough (#201 1/4\" square 3FL)",
+   "id": "rough",
+   "name": "Rough (46369-K ball, coarse 1.4 mm)",
    "type": "rough3d",
-   "toolId": "t201",
+   "toolId": "am46369k",
    "modelId": "interference_pattern",
    "shapeIds": [
     "ROI"
    ],
-   "depth": 5.840000209808349,
-   "depthPerPass": 3.175,
-   "stepover": 2.86,
-   "stockToLeave": 0,
-   "entry": "helix",
    "boundaryMode": "shapes",
-   "containment": "outside",
-   "boundary": 9.52,
+   "containment": "inside",
+   "depth": 7,
    "rpm": 18000,
-   "feed": 3240,
-   "plunge": 1300
+   "feed": 970,
+   "plunge": 390,
+   "enabled": true,
+   "depthPerPass": 2,
+   "stepover": 1.4,
+   "stockToLeave": 0.3,
+   "entry": "helix"
   },
   {
-   "id": "interference_pattern_pocket_1",
-   "name": "Pocket to Z-0.08 (#201 1/4\" square 3FL)",
-   "type": "pocket",
-   "toolId": "t201",
-   "shapeIds": [
-    "interference_pattern_level_z-0.08_1",
-    "interference_pattern_level_z-0.08_2",
-    "interference_pattern_level_z-0.08_3",
-    "interference_pattern_level_z-0.08_4",
-    "interference_pattern_level_z-0.08_5",
-    "interference_pattern_level_z-0.08_6",
-    "interference_pattern_level_z-0.08_7",
-    "interference_pattern_level_z-0.08_8",
-    "interference_pattern_level_z-0.08_9",
-    "interference_pattern_level_z-0.08_10",
-    "interference_pattern_level_z-0.08_11",
-    "interference_pattern_level_z-0.08_12",
-    "interference_pattern_level_z-0.08_13"
-   ],
-   "depth": 0.08,
-   "depthPerPass": 3.175,
-   "stepover": 2.86,
-   "entry": "helix",
-   "rpm": 18000,
-   "feed": 3240,
-   "plunge": 1300,
-   "enabled": false
-  },
-  {
-   "id": "interference_pattern_rest_1",
-   "name": "Rest to Z-0.08 (Amana 46369-K 1/8\" upcut Spektra)",
-   "type": "pocket",
-   "toolId": "am46369k",
-   "shapeIds": [
-    "interference_pattern_rest_z-0.08_1",
-    "interference_pattern_rest_z-0.08_2",
-    "interference_pattern_rest_z-0.08_3",
-    "interference_pattern_rest_z-0.08_4",
-    "interference_pattern_rest_z-0.08_5",
-    "interference_pattern_rest_z-0.08_6",
-    "interference_pattern_rest_z-0.08_7",
-    "interference_pattern_rest_z-0.08_8",
-    "interference_pattern_rest_z-0.08_9",
-    "interference_pattern_rest_z-0.08_10",
-    "interference_pattern_rest_z-0.08_11",
-    "interference_pattern_rest_z-0.08_12",
-    "interference_pattern_rest_z-0.08_13",
-    "interference_pattern_rest_z-0.08_14",
-    "interference_pattern_rest_z-0.08_15",
-    "interference_pattern_rest_z-0.08_16",
-    "interference_pattern_rest_z-0.08_17"
-   ],
-   "depth": 0.08,
-   "depthPerPass": 1.5875,
-   "stepover": 1.27,
-   "entry": "helix",
-   "rpm": 18000,
-   "feed": 1080,
-   "plunge": 430,
-   "enabled": false
-  },
-  {
-   "id": "interference_pattern_pocket_2",
-   "name": "Pocket to Z-5.53000020980835 (Amana 46369-K 1/8\" upcut Spektra)",
-   "type": "pocket",
-   "toolId": "am46369k",
-   "shapeIds": [
-    "interference_pattern_level_base_1",
-    "interference_pattern_level_base_2"
-   ],
-   "depth": 5.53,
-   "startDepth": 4.930000000000001,
-   "depthPerPass": 1.5875,
-   "stepover": 1.43,
-   "entry": "helix",
-   "rpm": 18000,
-   "feed": 1080,
-   "plunge": 430,
-   "enabled": false
-  },
-  {
-   "id": "interference_pattern_finish",
-   "name": "3D finish (E253 1/16\" ball nose)",
+   "id": "finish",
+   "name": "Finish (46369-K ball, 0.3 mm)",
    "type": "finish3d",
-   "toolId": "e253",
+   "toolId": "am46369k",
    "modelId": "interference_pattern",
-   "shapeIds": [],
-   "depth": 5.540000209808349,
-   "stepover": 0.16,
-   "axis": "x",
-   "boundaryMode": "silhouette",
-   "containment": "outside",
-   "boundary": 9.52,
+   "shapeIds": [
+    "ROI"
+   ],
+   "boundaryMode": "shapes",
+   "containment": "inside",
+   "depth": 7,
    "rpm": 18000,
-   "feed": 490,
-   "plunge": 200,
-   "enabled": false
+   "feed": 970,
+   "plunge": 390,
+   "enabled": true,
+   "stepover": 0.3,
+   "axis": "x",
+   "finishFloor": false
   }
  ],
  "material": "softwood",
@@ -718334,10 +718239,11 @@
     "rotX": 0,
     "rotY": 0,
     "rotZ": 0,
-    "scale": 70
+    "scale": 80
    }
   }
  ],
- "_rev": "jj44nu2gk0b",
- "_savedAt": "2026-09-29T04:43:56.385Z"
+ "notes": "Interference-pattern relief, 6.3 mm deep, ROI 61×61. Two passes with the same 1/8\" ball (no tool change): coarse 1.4 mm stepover, then 0.3 mm raster along X (~13 min). Optional third pass: E253 1/16\" ball at 0.16–0.2 mm reaches the tightest crevices (max 0.58 mm left by the 1/8\" ball on ~4% of the area) at roughly +35 min.",
+ "_rev": "zhvtxmda7d",
+ "_savedAt": "2026-09-29T05:52:10.398Z"
 }

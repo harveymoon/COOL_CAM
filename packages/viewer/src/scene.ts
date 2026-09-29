@@ -184,6 +184,20 @@ export class SceneController {
     this.loop(0);
   }
 
+  /** Render once and return a downscaled JPEG data URL of the viewport (project thumbnails). */
+  snapshot(width = 480, height = 300, quality = 0.82): string | null {
+    try {
+      const w = this.el.clientWidth, h = this.el.clientHeight; if (!w || !h) return null;
+      this.renderer.setScissorTest(false); this.renderer.setViewport(0, 0, w, h); this.renderer.render(this.scene, this.camera);
+      const src = this.renderer.domElement; const c = document.createElement('canvas'); c.width = width; c.height = height;
+      const g = c.getContext('2d')!; g.fillStyle = '#0d0f13'; g.fillRect(0, 0, width, height);
+      // cover-fit crop of the viewport
+      const scale = Math.max(width / src.width, height / src.height); const dw = src.width * scale, dh = src.height * scale;
+      g.drawImage(src, (width - dw) / 2, (height - dh) / 2, dw, dh);
+      return c.toDataURL('image/jpeg', quality);
+    } catch { return null; }
+  }
+
   dispose() {
     cancelAnimationFrame(this.raf); this.ro.disconnect(); this.controls.dispose(); this.tc.dispose(); this.renderer.dispose();
     window.removeEventListener('keydown', this.onKey); window.removeEventListener('keyup', this.onKey);

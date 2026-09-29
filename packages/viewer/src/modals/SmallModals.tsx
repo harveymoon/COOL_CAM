@@ -20,15 +20,3 @@ export function ConfirmModal({ title, message, onConfirm }: { title: string; mes
     </Modal>
   );
 }
-
-export function OpenJobModal() {
-  const ui = useUi();
-  return (
-    <Modal title="Open job" onClose={ui.closeModal} width={420} footer={<button onClick={ui.closeModal}>Cancel</button>}>
-      <div className="list tall">
-        {ui.files.map(f => <div key={f.name} className={`item${ui.file === f.name ? ' sel' : ''}`} onClick={() => { ui.setFile(f.name); ui.closeModal(); }}><span className="mono">{f.name}</span><span className="muted">{new Date(f.mtime).toLocaleString()}</span></div>)}
-        {ui.files.length === 0 && <div className="empty">No saved jobs yet.</div>}
-      </div>
-    </Modal>
-  );
-}

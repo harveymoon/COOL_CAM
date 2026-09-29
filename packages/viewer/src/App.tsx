@@ -16,7 +16,8 @@ import { HeightmapModal } from './modals/HeightmapModal';
 import { AddShapeModal } from './modals/AddShapeModal';
 import { TransformModal } from './modals/TransformModal';
 import { ToolLibraryModal } from './modals/ToolLibraryModal';
-import { PromptModal, ConfirmModal, OpenJobModal } from './modals/SmallModals';
+import { PromptModal, ConfirmModal } from './modals/SmallModals';
+import { Landing } from './Landing';
 import { addOperation, deleteShapes, downloadGcode, duplicateShapes, importFile, importModelFile, syncToolsFromLibrary, openShapeParams, booleanShapes, offsetShapes } from './actions';
 import { PANELS, applyConstraints, defaultLayout, deleteLayout, floatPanel, loadLayout, persistCurrent, restoreCurrent, saveLayout, savedLayouts, showPanel } from './layout';
 import { useNativeMenu } from './nativeMenu';
@@ -61,10 +62,11 @@ function Shell() {
   const scene = () => ui.sceneRef.current;
   const menus: Menu[] = [
     { label: 'File', items: [
-      { label: 'New job…', shortcut: '', onClick: () => ui.openModal({ kind: 'prompt', title: 'New job', label: 'name', initial: 'New job', onSubmit: n => ui.createJob(n) }) },
+      { label: 'New project…', onClick: () => ui.openModal({ kind: 'open' }) },
       { label: 'Open…', onClick: () => ui.openModal({ kind: 'open' }) },
-      { label: 'Save as…', disabled: !ui.job, onClick: () => ui.openModal({ kind: 'prompt', title: 'Save job as', label: 'name', initial: ui.job?.name, onSubmit: n => ui.saveAs(n) }) },
-      { label: 'Reload from disk', onClick: ui.reload },
+      { label: 'Save as…', disabled: !ui.job, onClick: () => ui.openModal({ kind: 'prompt', title: 'Save project as', label: 'name', initial: ui.job?.name, onSubmit: n => ui.saveAs(n) }) },
+      { label: 'Close project', disabled: !ui.job, onClick: ui.closeProject },
+      { label: 'Reload from disk', disabled: !ui.job, onClick: ui.reload },
       'sep',
       { label: 'Import DXF / SVG…', onClick: () => fileInput.current?.click() },
       { label: 'Import 3D model (STL / OBJ)…', onClick: () => modelInput.current?.click() },
@@ -134,14 +136,22 @@ function Shell() {
       <input ref={fileInput} type="file" accept=".dxf,.svg" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importFile(ui, f); e.target.value = ''; }} />
       <input ref={modelInput} type="file" accept=".stl,.obj" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importModelFile(ui, f); e.target.value = ''; }} />
       <input ref={imageInput} type="file" accept="image/png,image/jpeg" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) ui.openModal({ kind: 'heightmap', file: f }); e.target.value = ''; }} />
-      <div className="dock" onDragOver={e => e.preventDefault()} onDrop={async e => { const f = e.dataTransfer.files[0]; if (!f) return; e.preventDefault(); if (f.name.endsWith('.json')) ui.setJob(JSON.parse(await f.text())); else if (/\.(stl|obj)$/i.test(f.name)) importModelFile(ui, f); else importFile(ui, f); }}>
+      <div className="dock" onDragOver={e => e.preventDefault()} onDrop={async e => { const f = e.dataTransfer.files[0]; if (!f) return; e.preventDefault(); if (f.name.endsWith('.json')) { const j = JSON.parse(await f.text()); if (ui.job) ui.setJob(j); else ui.createJob(j); } else if (/\.(stl|obj)$/i.test(f.name)) importModelFile(ui, f); else importFile(ui, f); }}>
         <DockviewReact components={components} tabComponents={tabComponents} onReady={onReady} theme={themeDark} getTabContextMenuItems={() => ['float', 'maximize', 'separator', 'close']} />
         {ui.modal?.kind === 'addShape' && <AddShapeModal />}
         {ui.modal?.kind === 'transform' && <TransformModal />}
         {ui.modal?.kind === 'tools' && <ToolLibraryModal />}
         {ui.modal?.kind === 'text' && <TextModal />}
         {ui.modal?.kind === 'heightmap' && <HeightmapModal file={ui.modal.file} />}
-        {ui.modal?.kind === 'open' && <OpenJobModal />}
+        {ui.modal?.kind === 'open' && ui.job && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) ui.closeModal(); }}><div className="modal landing-modal"><Landing asPage={false} /></div></div>}
+        {!ui.job && <Landing asPage />}
+        {ui.mcpSwitched && ui.job && (
+          <div className="notice">
+            Claude is now working on <b>{ui.mcpSwitched.name}</b>.
+            <button className="primary" onClick={() => ui.openProject(ui.mcpSwitched!.file)}>Open it</button>
+            <button onClick={ui.dismissMcpSwitched}>Stay here</button>
+          </div>
+        )}
         {ui.modal?.kind === 'prompt' && <PromptModal title={ui.modal.title} label={ui.modal.label} initial={ui.modal.initial} onSubmit={ui.modal.onSubmit} />}
         {ui.modal?.kind === 'confirm' && <ConfirmModal title={ui.modal.title} message={ui.modal.message} onConfirm={ui.modal.onConfirm} />}
       </div>

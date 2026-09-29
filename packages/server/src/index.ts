@@ -62,6 +62,20 @@ function listFonts(dirs: string[]): { name: string; file: string }[] {
 
 const json = (res: http.ServerResponse, v: unknown, status = 200) => { res.statusCode = status; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(v)); };
 const readBody = (req: http.IncomingMessage) => new Promise<string>((resolve, reject) => { let b = ''; req.on('data', (c: Buffer) => { b += c; }); req.on('end', () => resolve(b)); req.on('error', reject); });
+const readBytes = (req: http.IncomingMessage) => new Promise<Buffer>((resolve, reject) => { const parts: Buffer[] = []; req.on('data', (c: Buffer) => parts.push(c)); req.on('end', () => resolve(Buffer.concat(parts))); req.on('error', reject); });
+
+/** What the landing page shows per project without loading the whole (possibly multi-MB) job. */
+export interface JobListEntry { name: string; mtime: number; thumb: string | null; summary: { name: string; material?: string; stock?: { width: number; length: number; thickness: number }; ops: number; shapes: number; models: number; savedAt?: string } | null }
+const summaryCache = new Map<string, { mtime: number; summary: JobListEntry['summary'] }>();
+function summarize(file: string, mtime: number): JobListEntry['summary'] {
+  const hit = summaryCache.get(file); if (hit && hit.mtime === mtime) return hit.summary;
+  let summary: JobListEntry['summary'] = null;
+  try {
+    const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    summary = { name: j.name ?? path.basename(file, '.json'), material: j.material, stock: j.stock ? { width: j.stock.width, length: j.stock.length, thickness: j.stock.thickness } : undefined, ops: (j.ops ?? []).length, shapes: (j.shapes ?? []).length, models: (j.models ?? []).length, savedAt: j._savedAt };
+  } catch { /* unreadable: listed without a summary */ }
+  summaryCache.set(file, { mtime, summary }); return summary;
+}
 
 export function createApi(opts: ApiOptions): Api {
   const jobsDir = opts.jobsDir;
@@ -105,12 +119,26 @@ export function createApi(opts: ApiOptions): Api {
         json(res, readToolLibrary(library.file)); return true;
       }
       if (route === '/api/jobs' || route === '/api/jobs/') {
-        const files = fs.readdirSync(jobsDir).filter(f => f.endsWith('.json')).map(f => ({ name: f, mtime: fs.statSync(path.join(jobsDir, f)).mtimeMs })).sort((a, b) => b.mtime - a.mtime);
+        const all = fs.readdirSync(jobsDir);
+        const files: JobListEntry[] = all.filter(f => f.endsWith('.json')).map(f => {
+          const mtime = fs.statSync(path.join(jobsDir, f)).mtimeMs; const thumb = f.replace(/\.json$/, '.jpg');
+          return { name: f, mtime, thumb: all.includes(thumb) ? thumb : null, summary: summarize(path.join(jobsDir, f), mtime) };
+        }).sort((a, b) => b.mtime - a.mtime);
         json(res, files); return true;
       }
       if (route.startsWith('/api/jobs/')) {
         const base = path.basename(decodeURIComponent(route.slice('/api/jobs/'.length)));
         const file = path.join(jobsDir, base);
+        if (req.method === 'DELETE') {
+          if (!base.endsWith('.json') || base === 'current.json') { res.statusCode = 400; res.end('only project .json files can be deleted'); return true; }
+          for (const ext of ['.json', '.jpg', '.nc']) { const f = path.join(jobsDir, base.replace(/\.json$/, ext)); if (fs.existsSync(f)) fs.unlinkSync(f); }
+          json(res, { ok: true }); return true;
+        }
+        if (req.method === 'PUT' && base.endsWith('.jpg')) {
+          // project thumbnail, raw JPEG bytes from the viewer's canvas
+          readBytes(req).then(buf => { if (buf.length > 2_000_000) { res.statusCode = 413; res.end('thumbnail too large'); return; } fs.writeFileSync(file, buf); json(res, { ok: true, file: base }); }).catch(e => { res.statusCode = 500; res.end(String(e)); });
+          return true;
+        }
         if (req.method === 'PUT') {
           if (!base.endsWith('.json')) { res.statusCode = 400; res.end('job files end in .json'); return true; }
           readBody(req).then(body => {
@@ -124,7 +152,7 @@ export function createApi(opts: ApiOptions): Api {
           return true;
         }
         if (!fs.existsSync(file)) { res.statusCode = 404; res.end('not found'); return true; }
-        res.setHeader('content-type', base.endsWith('.json') ? 'application/json' : 'text/plain'); res.end(fs.readFileSync(file)); return true;
+        res.setHeader('content-type', base.endsWith('.json') ? 'application/json' : base.endsWith('.jpg') ? 'image/jpeg' : 'text/plain'); res.setHeader('cache-control', 'no-cache'); res.end(fs.readFileSync(file)); return true;
       }
       res.statusCode = 404; res.end('unknown api route'); return true;
     } catch (e) { res.statusCode = 500; res.end(String((e as Error).message)); return true; }

@@ -2,6 +2,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 jobs/*.gcode
+# project thumbnails captured by the viewer
+jobs/*.jpg
 .DS_Store
 
 # live job the viewer and MCP server write on every edit

@@ -45,7 +45,8 @@ Every mutation is saved to `jobs/current.json`; keep the viewer open and it re-r
 
 The viewer is a full editor sharing the same job file with the MCP server (edits in either place show up in the other).
 
-- **Menu bar**: File (new, open, save as, reload, import DXF/SVG, export G-code), Edit (add shape, transform, duplicate, delete, select), Paths (add pocket/profile/drill, tool library, sync tools), View (view cube, fit, orthographic, named views, toggles), Window (show/float panels, save/recall/reset layouts).
+- **Landing page**: nothing is loaded on start. Pick a project from the grid (thumbnails are captured once a project has been opened and simulated), see its preview and details, then press Open; or create a named project with its stock and material. File → Open… shows the same page while a project is open.
+- **Menu bar**: File (new/open project, save as, close, reload, import DXF/SVG, export G-code), Edit (add shape, transform, duplicate, delete, select), Paths (add pocket/profile/drill, tool library, sync tools), View (view cube, fit, orthographic, named views, toggles), Window (show/float panels, save/recall/reset layouts).
 - **Panels** dock anywhere: drag a tab to any edge or into another group, right-click a tab to float or maximize it, or use Window → Float panel. The layout is remembered; Window → Save layout stores named layouts.
 - **Job & Stock**: name, material, stock size/origin, clearances.
 - **Shapes**: select in the list or by clicking in 3D (shift adds). Add shape and Transform open dialogs over the viewport.

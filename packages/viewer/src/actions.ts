@@ -1,4 +1,4 @@
-import { uid, bbox, parseDxf, parseSvg, stockBounds, feedsAndSpeeds, parseStl, parseObj, placementFor, IDENTITY_PLACEMENT, proposeOperations, polylineFromParams, translateParams, union, difference, intersection, offsetPolygons, normalize, signedArea } from '@cool-cam/core';
+import { uid, bbox, parseDxf, parseSvg, stockBounds, feedsAndSpeeds, parseStl, parseObj, placementFor, IDENTITY_PLACEMENT, proposeOperations, polylineFromParams, translateParams, union, difference, intersection, offsetPolygons, normalize, signedArea, newJob } from '@cool-cam/core';
 import type { Op, Shape, MaterialId, Tool, Model, ShapeParams, Polyline } from '@cool-cam/core';
 import type { Ui } from './ui';
 import { showPanel } from './layout';
@@ -60,7 +60,7 @@ export async function importFile(ui: Ui, file: File, placeAtCorner = true) {
   if (placeAtCorner) { const bb = bbox(polys); polys = polys.map(p => ({ closed: p.closed, points: p.points.map(q => ({ x: q.x - bb.minX + b.x0 + 5, y: q.y - bb.minY + b.y0 + 5 })) })); }
   const base = file.name.replace(/\.[^.]+$/, '').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
   const shapes: Shape[] = polys.map((p, i) => ({ id: `${base}_${i + 1}`, name: `${base} ${i + 1}`, polyline: p }));
-  if (!job) { const bb = bbox(polys); ui.createJob(file.name); ui.setJob(j => ({ ...j, stock: { ...j.stock, width: Math.ceil(bb.maxX + 5), length: Math.ceil(bb.maxY + 5) }, shapes })); }
+  if (!job) { const bb = bbox(polys); const j = newJob(file.name.replace(/\.[^.]+$/, ''), { width: Math.ceil(bb.maxX + 5), length: Math.ceil(bb.maxY + 5) }); j.shapes = shapes; ui.createJob(j); }
   else ui.setJob(j => { const ids = new Set(j.shapes.map(s => s.id)); for (const s of shapes) if (ids.has(s.id)) s.id = uid(base); return { ...j, shapes: [...j.shapes, ...shapes] }; });
   ui.setSelectedShapes(shapes.map(s => s.id));
 }
@@ -91,9 +91,9 @@ export async function importModelFile(ui: Ui, file: File) {
   const ext = file.name.split('.').pop()?.toLowerCase();
   const mesh = ext === 'obj' ? parseObj(await file.text()) : parseStl(await file.arrayBuffer());
   if (!mesh.positions.length) return;
-  if (!ui.job) ui.createJob(file.name.replace(/\.[^.]+$/, ''));
   const base = file.name.replace(/\.[^.]+$/, '').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
   const model: Model = { id: base, name: file.name, positions: Array.from(mesh.positions, v => Math.round(v * 1000) / 1000), placement: { ...IDENTITY_PLACEMENT } };
+  if (!ui.job) { const j = newJob(file.name.replace(/\.[^.]+$/, '')); const b = stockBounds(j.stock); model.placement = placementFor(model, { centerX: (b.x0 + b.x1) / 2, centerY: (b.y0 + b.y1) / 2, top: b.top }); j.models = [model]; ui.createJob(j); ui.setSelectedModel(model.id); return; }
   ui.setJob(j => {
     const b = stockBounds(j.stock);
     if ((j.models ?? []).some(m => m.id === model.id)) model.id = uid(base);

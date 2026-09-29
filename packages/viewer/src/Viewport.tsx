@@ -40,6 +40,13 @@ export function Viewport() {
   useEffect(() => { sc()?.setXray(ui.xray); }, [ui.xray, ui.sceneReady, ui.sim]);
   useEffect(() => { sc()?.setSimGrid(ui.sim); }, [ui.sim, ui.sceneReady]);
   useEffect(() => { sc()?.setHeights(ui.heights); }, [ui.heights, ui.sim, ui.sceneReady]);
+  // project thumbnail: a little after each simulation result lands (so the cut stock is visible), capture the viewport
+  useEffect(() => {
+    if (!ui.sim || !ui.job || !ui.file) return;
+    const t = window.setTimeout(() => { const url = sc()?.snapshot(); if (url) ui.saveThumbnail(url); }, 1500);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ui.sim]);
   useEffect(() => { sc()?.setViewCube(ui.viewCube); setCube(ui.viewCube); }, [ui.viewCube, ui.sceneReady]);
   useEffect(() => { sc()?.setTabEdit(ui.tabEdit); }, [ui.tabEdit, ui.sceneReady]);
   // machining boundary outline for the active 3D op

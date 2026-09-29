@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type ReactNode, type SetStateAction } from 'react';
-import { DEFAULT_TOOLS, newJob } from '@cool-cam/core';
+import { DEFAULT_TOOLS } from '@cool-cam/core';
 import type { Job, Tool } from '@cool-cam/core';
-import { useJobStore, type Derived, type JobUpdater } from './store';
+import { useJobStore, type Derived, type JobUpdater, type ProjectEntry } from './store';
 import { useSimulation, type SimGrid } from './useSimulation';
 import type { SceneController } from './scene';
 import type { DockviewApi } from 'dockview-react';
@@ -17,8 +17,11 @@ export type ModalState =
   | { kind: 'confirm'; title: string; message: string; onConfirm: () => void };
 
 export interface Ui {
-  files: { name: string; mtime: number }[]; file: string; setFile: (f: string) => void;
-  job: Job | null; setJob: (u: JobUpdater | Job) => void; createJob: (name: string) => void; saveAs: (name: string) => void; reload: () => void;
+  files: ProjectEntry[]; file: string | null;
+  job: Job | null; setJob: (u: JobUpdater | Job) => void; createJob: (j: Job) => void; saveAs: (name: string) => void; reload: () => void;
+  openProject: (f: string) => Promise<void>; closeProject: () => void; deleteProject: (f: string) => Promise<void>; saveThumbnail: (dataUrl: string) => Promise<void>; refreshList: () => Promise<void>;
+  /** The MCP server switched to another job; the UI offers to open it. */
+  mcpSwitched: { file: string; name: string } | null; dismissMcpSwitched: () => void;
   derived: Derived | null; error: string | null; saving: boolean;
   /** True while toolpaths are being regenerated on the worker (the shown toolpaths are the previous result). */
   generating: boolean;
@@ -85,10 +88,11 @@ export function UiProvider({ children }: { children: ReactNode }) {
   }, []);
   const setActiveOpAndMode = useCallback((id: string | null) => { setActiveOp(id); if (id) setParamsMode('op'); }, []);
 
-  const createJob = useCallback((name: string) => { const j = newJob(name); j.tools = library.map(t => ({ ...t })); store.createJob(j); setSelectedShapes([]); setActiveOp(null); }, [library, store]);
+  const createJob = useCallback((j: Job) => { if (!j.tools?.length) j.tools = library.map(t => ({ ...t })); store.createJob(j); setSelectedShapes([]); setActiveOp(null); }, [library, store]);
 
   const value: Ui = useMemo(() => ({
-    files: store.files, file: store.file, setFile: store.setFile, job: store.job, setJob: store.setJob, createJob, saveAs: store.saveAs, reload: store.reload,
+    files: store.files, file: store.file, job: store.job, setJob: store.setJob, createJob, saveAs: store.saveAs, reload: store.reload,
+    openProject: store.openProject, closeProject: store.closeProject, deleteProject: store.deleteProject, saveThumbnail: store.saveThumbnail, refreshList: store.refreshList, mcpSwitched: store.mcpSwitched, dismissMcpSwitched: store.dismissMcpSwitched,
     derived: store.derived, generating: store.generating, error: store.error, saving: store.saving, undo: store.undo, redo: store.redo, canUndo: store.canUndo, canRedo: store.canRedo, paramsMode, setParamsMode,
     selectedShapes, setSelectedShapes, pickShape, activeOp, setActiveOp: setActiveOpAndMode, selectedModel, setSelectedModel,
     ...simState,

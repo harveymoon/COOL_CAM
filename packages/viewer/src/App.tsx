@@ -9,6 +9,7 @@ import { JobPanel } from './panels/JobPanel';
 import { ShapesPanel } from './panels/ShapesPanel';
 import { OpsPanel } from './panels/OpsPanel';
 import { OutputPanel } from './panels/OutputPanel';
+import { HelpPanel } from './panels/HelpPanel';
 import { OpEditPanel } from './panels/OpEditPanel';
 import { ModelsPanel } from './panels/ModelsPanel';
 import { TextModal } from './modals/TextModal';
@@ -23,7 +24,7 @@ import { addOperation, deleteShapes, downloadGcode, duplicateShapes, importFile,
 import { PANELS, applyConstraints, defaultLayout, deleteLayout, floatPanel, loadLayout, persistCurrent, restoreCurrent, saveLayout, savedLayouts, showPanel } from './layout';
 import { useNativeMenu } from './nativeMenu';
 
-const components = { viewport: Viewport, job: JobPanel, shapes: ShapesPanel, models: ModelsPanel, ops: OpsPanel, opedit: OpEditPanel, output: OutputPanel };
+const components = { viewport: Viewport, job: JobPanel, shapes: ShapesPanel, models: ModelsPanel, ops: OpsPanel, opedit: OpEditPanel, output: OutputPanel, help: HelpPanel };
 const tabComponents = { locked: (p: IDockviewPanelHeaderProps) => <DockviewDefaultTab {...p} hideClose /> };
 
 export function App() { return <UiProvider><Shell /></UiProvider>; }

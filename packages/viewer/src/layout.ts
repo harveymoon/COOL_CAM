@@ -1,6 +1,6 @@
 import type { DockviewApi, SerializedDockview } from 'dockview-react';
 
-export const PANELS: Record<string, string> = { viewport: 'Viewport', job: 'Job & Stock', shapes: 'Shapes', models: 'Models', ops: 'Operations', opedit: 'Parameters', output: 'Output' };
+export const PANELS: Record<string, string> = { viewport: 'Viewport', job: 'Job & Stock', shapes: 'Shapes', models: 'Models', ops: 'Operations', opedit: 'Parameters', output: 'Output', help: 'Help' };
 const KEY_CURRENT = 'coolcam.layout.current';
 const KEY_SAVED = 'coolcam.layouts';
 

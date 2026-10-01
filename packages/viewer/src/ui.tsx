@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type ReactNode, type SetStateAction } from 'react';
 import { DEFAULT_TOOLS } from '@cool-cam/core';
 import type { Job, Tool, MachineProfile } from '@cool-cam/core';
+import { describeElement, type HelpInfo } from './help';
 import { useJobStore, type Derived, type JobUpdater, type ProjectEntry } from './store';
 import { useSimulation, type SimGrid } from './useSimulation';
 import type { SceneController } from './scene';
@@ -47,6 +48,8 @@ export interface Ui {
   library: Tool[]; saveLibrary: (tools: Tool[]) => void;
   /** The user's own machine profiles (presets live in core). */
   machines: MachineProfile[]; saveMachines: (m: MachineProfile[]) => void;
+  /** What the mouse is over, for the Help panel. */
+  hover: HelpInfo | null;
   /** Font names available from the dev server (/api/fonts). */
   fonts: string[];
 }
@@ -82,6 +85,14 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const [machines, setMachines] = useState<MachineProfile[]>([]);
   useEffect(() => { fetch('/api/machines').then(r => r.json()).then((m: MachineProfile[]) => { if (Array.isArray(m)) setMachines(m); }).catch(() => {}); }, []);
   const saveMachines = useCallback((m: MachineProfile[]) => { setMachines(m); fetch('/api/machines', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(m) }).catch(() => {}); }, []);
+  // context help: track the element under the mouse (throttled to one update per frame; the help panel itself is ignored)
+  const [hover, setHover] = useState<HelpInfo | null>(null);
+  useEffect(() => {
+    // a timer, not requestAnimationFrame: frames stop when the window is hidden or behind another one
+    let timer = 0; let pending: Element | null = null; let last: Element | null = null;
+    const on = (e: MouseEvent) => { const t = e.target as Element | null; if (t === last) return; last = t; pending = t; if (timer) return; timer = window.setTimeout(() => { timer = 0; const info = describeElement(pending); if (info) setHover(info); }, 40); };
+    document.addEventListener('mouseover', on); return () => { document.removeEventListener('mouseover', on); if (timer) window.clearTimeout(timer); };
+  }, []);
 
   // drop selection of shapes that no longer exist
   useEffect(() => { if (!store.job) return; const ids = new Set(store.job.shapes.map(s => s.id)); setSelectedShapes(s => s.every(id => ids.has(id)) ? s : s.filter(id => ids.has(id))); }, [store.job]);
@@ -103,8 +114,8 @@ export function UiProvider({ children }: { children: ReactNode }) {
     selectedShapes, setSelectedShapes, pickShape, activeOp, setActiveOp: setActiveOpAndMode, selectedModel, setSelectedModel,
     ...simState,
     showPaths, setShowPaths, showStock, setShowStock, showModels, setShowModels, showShapes, setShowShapes, xray, setXray, viewCube, setViewCube, ortho, setOrtho, sceneRef, sceneReady, setSceneReady, dockRef, tabEdit, setTabEdit,
-    modal, openModal: setModal, closeModal: () => setModal(null), library, saveLibrary, machines, saveMachines, fonts,
-  }), [store, simState, selectedShapes, pickShape, activeOp, setActiveOpAndMode, selectedModel, paramsMode, showPaths, showStock, showModels, showShapes, xray, viewCube, ortho, sceneReady, modal, library, saveLibrary, machines, saveMachines, createJob, tabEdit, fonts]);
+    modal, openModal: setModal, closeModal: () => setModal(null), library, saveLibrary, machines, saveMachines, hover, fonts,
+  }), [store, simState, selectedShapes, pickShape, activeOp, setActiveOpAndMode, selectedModel, paramsMode, showPaths, showStock, showModels, showShapes, xray, viewCube, ortho, sceneReady, modal, library, saveLibrary, machines, saveMachines, hover, createJob, tabEdit, fonts]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

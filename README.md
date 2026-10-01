@@ -12,9 +12,11 @@ packages/
   post/    GRBL post: M6 T<n> or M0 tool changes (per machine profile), G53 safe moves, arc fitting
   sim/     heightmap stock-removal simulator with collision / over-depth checks and scrubbable keyframes
   mcp/     MCP server (stdio) exposing the whole pipeline as tools
+  server/  local HTTP API (jobs, tool library, machines, fonts, change feed) used by the viewer, the CLI and the app
   viewer/  Vite + React + Three.js: 3D toolpaths, live stock simulation, timeline scrubber, G-code export
-jobs/      job files written by the MCP server; the viewer watches this folder and reloads live
-examples/  sample drawings
+  desktop/ Electron shell (electron-vite + electron-builder): the viewer and the API in a window, the MCP server bundled
+jobs/      project files (one JSON per project, with a thumbnail); current.json is the pointer the MCP server follows
+examples/  sample drawings, STLs and the script that builds the example projects from your tool library
 ```
 
 ## Screenshots
@@ -52,23 +54,25 @@ Typical conversation:
 2. `import_geometry` (DXF/SVG) or `add_shape` (rect, circle, slot, polygon)
 3. `feeds_and_speeds` — starting numbers for a tool + material
 4. `add_operation` — pocket / profile / drill
-5. `generate` → `simulate` → `export_gcode`
+5. `generate` → `simulate` → `export_gcode` (refused while the simulation reports errors unless forced)
 
-Every mutation is saved to `jobs/current.json`; keep the viewer open and it re-renders automatically.
+Also: `machine_info` / `set_machine` (presets or a custom profile), `library_tools`, `propose_operations` from an STL, `import_model`, `import_heightmap_image`, `add_text` / `list_fonts`, `import_paths` + a `trace` operation for ready-made tool paths.
+
+Every mutation is saved to the current project; the viewer shows the change live, and if the MCP server switches to another project the viewer offers to follow rather than switching under you.
 
 ### Use it from the viewer
 
 The viewer is a full editor sharing the same job file with the MCP server (edits in either place show up in the other).
 
 - **Landing page**: nothing is loaded on start. Pick a project from the grid (thumbnails are captured once a project has been opened and simulated), see its preview and details, then press Open; or create a named project with its stock and material. File → Open… shows the same page while a project is open.
-- **Menu bar**: File (new/open project, save as, close, reload, import DXF/SVG, export G-code), Edit (add shape, transform, duplicate, delete, select), Paths (add pocket/profile/drill, tool library, sync tools), View (view cube, fit, orthographic, named views, toggles), Window (show/float panels, save/recall/reset layouts).
+- **Menu bar**: File (new/open project, save as, close, reload, import DXF/SVG, 3D models, relief images and tool paths, export G-code with a timestamped name), Edit (add shape/text, shape parameters, transform, booleans, duplicate, delete, select), Paths (add any operation, sync tools), View (view cube, fit, orthographic, named views, toggles), Window (tool library, machines, show/float panels, save/recall/reset layouts).
 - **Panels** dock anywhere: drag a tab to any edge or into another group, right-click a tab to float or maximize it, or use Window → Float panel. The layout is remembered; Window → Save layout stores named layouts.
-- **Job & Stock**: name, material, stock size/origin, clearances.
+- **Job & Stock**: name, material, machine (Change… opens the Machines window), stock size/origin, clearances, spoilboard allowance.
 - **Shapes**: select in the list or by clicking in 3D (shift adds). Add shape and Transform open dialogs over the viewport.
 - **Operations**: each op shows its tool, shapes, depth and feeds; Edit opens the **Edit operation** pane beside the viewport (dockable like any other panel) so you see the toolpaths and simulation change as you type. One-click material feeds. Reorder, enable/disable, duplicate, delete inline.
 - **Tabs**: profile ops have an Auto/Manual switch. Auto spaces N tabs evenly. Manual seeds from the auto layout, then *Place tabs in 3D* lets you click the contour to add tabs and click a marker to remove one. Tab markers show in the viewport for both modes.
 - **Output**: simulation verdict with clickable problem list, G-code download.
-- **Tool library** (Paths menu): your cutters live in your application-data folder (macOS `~/Library/Application Support/Cool CAM/tools.json`, Windows `%APPDATA%\Cool CAM\tools.json`, Linux `~/.config/cool-cam/tools.json`), shared with the MCP server and used for new jobs. The repo's `library/tools.json` is the bundled default that seeds it the first time; *Add bundled defaults* brings it back after a clear. The grid view draws each cutter from its parameters (or shows the tool's `image`), so a bit is easy to spot; the list view is the compact alternative.
+- **Tool library** (Window menu, or the Tools button in the top bar): a grid of your cutters rendered in 3D (the same models move in the simulation) with a list view; job tools vs library with usage counts. Your cutters live in your application-data folder (macOS `~/Library/Application Support/Cool CAM/tools.json`, Windows `%APPDATA%\Cool CAM\tools.json`, Linux `~/.config/cool-cam/tools.json`), shared with the MCP server and used for new jobs. The repo's `library/tools.json` is the bundled default that seeds it the first time; *Add bundled defaults* brings it back after a clear. The grid view draws each cutter from its parameters (or shows the tool's `image`), so a bit is easy to spot; the list view is the compact alternative.
 - **View cube**: press Space to show a SolidWorks-style chamfered cube over the model; faces, edge bevels, and corner bevels are all clickable and animate into that orthographic view (corners give 3/4 views). View → Orthographic toggles back to perspective.
 - **Move gizmo**: selecting shapes shows a translate handle in 3D; drag the X/Y arrows or the square for free XY moves. Hold Shift to snap to 1 mm. The move commits on release and regenerates toolpaths.
 - **Stock texture**: the simulated stock is textured by material (wood grain, brushed metal, MDF speckle, plastics); cut floors tint warmer with depth so pockets read against the grain. Through-cuts open real holes onto a dark spoilboard drawn under the stock.
@@ -91,7 +95,7 @@ The viewer is a full editor sharing the same job file with the MCP server (edits
 
 ### Editing
 
-The **Parameters** panel shows either the active operation or the selected shapes. Shape mode has absolute position (min corner and centre), size, primitive parameters for rectangles, circles, polygons, slots and text, relative transforms, mirror, offset, and booleans (union, subtract, intersect). Undo/redo is ⌘Z / ⇧⌘Z. The timeline shows one segment per operation coloured by tool, with tool-change ticks and hover details; click a segment to jump to the end of that operation.
+The **Parameters** panel shows either the active operation or the selected shapes. Shape mode has the centre position, width and height with a link toggle for the aspect ratio, primitive parameters for rectangles, circles, polygons, slots and text, mirror, offset, and booleans (union, subtract, intersect). Undo/redo is ⌘Z / ⇧⌘Z. The timeline shows one segment per operation coloured by tool, with tool-change ticks and hover details; click a segment to jump to the end of that operation.
 
 ### 3D models
 
@@ -111,8 +115,8 @@ Both derive from a heightmap of the placed mesh, so the workflow is strictly 3-a
 - Units: mm. X0/Y0 at the stock's front-left corner by default, Z0 at stock top (BitSetter workflow).
 - Depths are positive numbers below the stock top.
 - Climb milling by default (material on the right of travel with a clockwise spindle).
-- The post emits `M6 T<n>` before every tool including the first so Carbide Motion prompts and probes the BitSetter. Use `toolChange: "m0-pause"` for gSender/CNCjs.
-- Machine numbers in `packages/core/src/machine.ts` (rapids, accel) only affect time estimates; check them against your GRBL `$` settings.
+- Tool changes follow the machine profile: `M6 T<n>` before every tool including the first (Carbide Motion prompts and probes the BitSetter), or `T<n>` + `M0` for senders that pause (gSender, UGS, bCNC, Candle). Window → Machines… picks a preset or your own numbers.
+- Machine rapids and accelerations only affect time estimates; max feeds flag operations that exceed them; check them against your GRBL `$` settings.
 
 ## Roadmap
 
@@ -121,9 +125,12 @@ boundaries, feature extraction to proposed operations, rest machining, tabs (aut
 G2/G3 arc fitting, a heightmap simulator with engagement checks that gates export, a per-user tool library with rendered
 cutters, and an MCP server over the whole pipeline.
 
+Also shipped: a macOS desktop app (Electron, universal; `docs/PACKAGING.md`), toolpath generation on a worker, machine profiles with a Machines window, a landing page with project thumbnails, and a Help panel that explains whatever is under the mouse.
+
 Next:
 
-- Desktop packaging (Electron; see `docs/PACKAGING.md`) with toolpath generation on a worker
+- Windows and Linux builds, Developer ID signing and notarization, auto-update
+- Edge-following mitre finishing generated from the model (the trace op already verifies external paths against it)
 - Waterline finishing, pencil/corner passes, semi-finish after Z-level roughing
 - Adaptive / trochoidal clearing (constant engagement)
 - Drawing tools and node editing in the viewer; arrays

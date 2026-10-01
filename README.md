@@ -74,6 +74,11 @@ The viewer is a full editor sharing the same job file with the MCP server (edits
 - **Stock texture**: the simulated stock is textured by material (wood grain, brushed metal, MDF speckle, plastics); cut floors tint warmer with depth so pockets read against the grain. Through-cuts open real holes onto a dark spoilboard drawn under the stock.
 - Timeline: scrub or play the cut; clicking an operation jumps to the end of that operation.
 
+### Mitres, through-cuts and external tool paths
+
+- **Spoilboard allowance** (Job panel): how far below the stock bottom cuts may go. Put Z0 on the spoilboard (`Z0 at: stock bottom`) and set the allowance to plan through-cuts and mitres finished through the face; the simulator treats the spoilboard as material and only complains beyond the allowance.
+- **Trace** (File → Import tool paths, then + Trace): runs ready-made 3D tool-tip paths from a generator's JSON or a 3D DXF (one layer per tool) through Cool CAM's feeds, simulation and post. With a model selected, a ball-nose path is verified against the STL by exact sphere-to-triangle distance and any gouge is reported before anything reaches the machine. DXF layers travel with the shapes, and REF layers are reference-only geometry that operations skip.
+
 ### Lettering, V-carve, keyhole, relief images
 
 - **Text**: Edit → Add text (or `add_text` / `list_fonts` over MCP) outlines a string with any TTF/OTF on this Mac into closed shapes; counters become holes. Text shapes stay editable in the Parameters panel (string, font, size, position, alignment, spacing).
@@ -111,7 +116,7 @@ Both derive from a heightmap of the placed mesh, so the workflow is strictly 3-a
 
 ## Roadmap
 
-Shipped so far: 2.5D pocket/profile/drill/keyhole, V-carve with flat clearing, 3D rough and finish with machining
+Shipped so far: 2.5D pocket/profile/drill/keyhole, V-carve with flat clearing, trace (follow imported 3D tool paths, verified exactly against the STL), spoilboard allowance for through-cuts and mitres, 3D rough and finish with machining
 boundaries, feature extraction to proposed operations, rest machining, tabs (auto and placed), ramp and helix entries,
 G2/G3 arc fitting, a heightmap simulator with engagement checks that gates export, a per-user tool library with rendered
 cutters, and an MCP server over the whole pipeline.

@@ -14,7 +14,7 @@ import type { Job, Op, Tool, Shape, Polyline, MaterialId, Model } from '@cool-ca
 import { postGrbl, summarizePost } from '@cool-cam/post';
 import { simulate } from '@cool-cam/sim';
 import { JobState } from './state.js';
-import { resolveToolLibrary, readToolLibrary, writeToolLibrary } from '@cool-cam/core/node';
+import { resolveToolLibrary, readToolLibrary, writeToolLibrary, userDataDir } from '@cool-cam/core/node';
 
 const jobsDir = process.env.COOL_CAM_JOBS_DIR ?? path.resolve(process.cwd(), 'jobs');
 // the repo's library/tools.json is the bundled default; the user's own library lives in their application-data folder
@@ -422,6 +422,26 @@ server.registerTool('import_paths', {
   const byTool: Record<string, number> = {}; for (const p of paths) byTool[p.tool ?? p.layer ?? '?'] = (byTool[p.tool ?? p.layer ?? '?'] ?? 0) + 1;
   return { imported: paths.length, byTool, zRange: zs.length ? [Math.min(...zs), Math.max(...zs)] : null, ids: paths.map(p => p.id), next: "add_operation { type: 'trace', pathIds, mode: 'project', modelId } (or mode 'tip' without a model)" };
 }));
+
+/** Where the viewer's API is: `COOL_CAM_API_URL`, or the api.json the running server writes next to the tool library. */
+function viewerApiUrl(): string | null {
+  if (process.env.COOL_CAM_API_URL) return process.env.COOL_CAM_API_URL;
+  try { const f = path.join(userDataDir(), 'api.json'); const j = JSON.parse(fs.readFileSync(f, 'utf8')); return typeof j.url === 'string' ? j.url : null; } catch { return null; }
+}
+server.registerTool('screenshot_viewport', {
+  title: 'Screenshot the viewport',
+  description: 'Returns a JPEG of the running viewer\'s 3D viewport (toolpaths, stock simulation, models) so you can look at the job without a browser. Needs Cool CAM open (the app or `npm run dev`) with a project loaded; it renders what the viewer shows (its toggles for paths/stock/models apply). `view` picks a camera, `fit` frames the stock first.',
+  inputSchema: { view: z.enum(['current', 'iso', 'top', 'front', 'back', 'left', 'right', 'bottom']).optional().describe('camera (default: leave as is)'), fit: z.boolean().optional().describe('frame the stock before capturing'), maxWidth: z.number().int().min(320).max(2560).optional().describe('pixels, default 1280'), quality: z.number().min(0.3).max(1).optional() },
+}, async ({ view, fit, maxWidth, quality }) => {
+  const base = viewerApiUrl();
+  if (!base) return fail('No running viewer found: open Cool CAM (the app, or npm run dev) and try again. (COOL_CAM_API_URL overrides discovery.)');
+  const q = new URLSearchParams(); if (view) q.set('view', view); if (fit) q.set('fit', '1'); if (maxWidth) q.set('maxWidth', String(maxWidth)); if (quality) q.set('quality', String(quality));
+  let r: Response;
+  try { r = await fetch(`${base.replace(/\/$/, '')}/api/snapshot?${q}`); } catch (e) { return fail(`The viewer at ${base} did not answer (${(e as Error).message}). Is it still running?`); }
+  if (!r.ok) { let msg = `${r.status}`; try { msg = (await r.json()).error ?? msg; } catch { /* ignore */ } return fail(msg); }
+  const data = Buffer.from(await r.arrayBuffer()).toString('base64');
+  return { content: [{ type: 'image' as const, data, mimeType: 'image/jpeg' }, { type: 'text' as const, text: `Viewport of ${state.job?.name ?? 'the open project'} (${view ?? 'current'} view${fit ? ', fitted' : ''}).` }] };
+});
 
 server.registerTool('machine_info', { title: 'Machine info', description: "The current job's machine profile (travel, feeds, spindle, tool-change mode, safe machine Z), the built-in machine presets, and the materials known to the feeds calculator.", inputSchema: {} },
   guarded(() => ({ machine: state.job ? machineFor(state.job) : SHAPEOKO_HDM, presets: MACHINE_PRESETS.map(m => ({ id: m.id, name: m.name, travel: m.travel, toolChange: m.toolChange })), materials: Object.entries(MATERIALS).map(([id, m]) => ({ id, name: m.name })) })));

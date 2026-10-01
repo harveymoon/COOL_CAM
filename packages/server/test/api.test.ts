@@ -65,4 +65,19 @@ describe('local API server', () => {
     expect(defaultFontDirs(['/extra']).at(-1)).toBe('/extra');
     expect(defaultFontDirs().length).toBeGreaterThan(1);
   });
+  it('refuses without a viewer, and relays a viewer-rendered JPEG when one is connected', async () => {
+    const { url, api } = await started;
+    expect((await fetch(url + 'api/snapshot')).status).toBe(503);
+    api.announce(url);
+    expect(JSON.parse(fs.readFileSync(path.join(dataDir, 'api.json'), 'utf8')).url).toBe(url);
+    // a fake viewer: listen to the event stream, answer the snapshot request with a JPEG
+    const ac = new AbortController();
+    const es = await fetch(url + 'api/events', { signal: ac.signal });
+    const reader = es.body!.getReader(); const dec = new TextDecoder();
+    const viewer = (async () => { let buf = ''; for (;;) { const { value, done } = await reader.read(); if (done) return; buf += dec.decode(value); const m = buf.match(/event: snapshot\ndata: (.*)\n/); if (m) { const spec = JSON.parse(m[1]); expect(spec.view).toBe('top'); await fetch(url + 'api/snapshot/' + spec.id, { method: 'POST', body: Buffer.alloc(300, 0xff) }); return; } } })();
+    await new Promise(r => setTimeout(r, 50));
+    const shot = await fetch(url + 'api/snapshot?view=top&fit=1&maxWidth=800');
+    expect(shot.status).toBe(200); expect(shot.headers.get('content-type')).toBe('image/jpeg'); expect((await shot.arrayBuffer()).byteLength).toBe(300);
+    await viewer; ac.abort();
+  });
 });

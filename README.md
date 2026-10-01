@@ -56,7 +56,7 @@ Typical conversation:
 4. `add_operation` — pocket / profile / drill
 5. `generate` → `simulate` → `export_gcode` (refused while the simulation reports errors unless forced)
 
-Also: `machine_info` / `set_machine` (presets or a custom profile), `library_tools`, `propose_operations` from an STL, `import_model`, `import_heightmap_image`, `add_text` / `list_fonts`, `import_paths` + a `trace` operation for ready-made tool paths.
+Also: `machine_info` / `set_machine` (presets or a custom profile), `library_tools`, `propose_operations` from an STL, `import_model`, `import_heightmap_image`, `add_text` / `list_fonts`, `import_paths` + a `trace` operation for ready-made tool paths, and `screenshot_viewport`, which returns a JPEG of the running viewer's 3D view (pick a camera, fit the stock) so Claude can look at the job without a browser.
 
 Every mutation is saved to the current project; the viewer shows the change live, and if the MCP server switches to another project the viewer offers to follow rather than switching under you.
 

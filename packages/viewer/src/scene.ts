@@ -184,11 +184,21 @@ export class SceneController {
     this.loop(0);
   }
 
+  /** Full-viewport JPEG at the viewport's own aspect ratio, downscaled to `maxWidth` (screenshots for the MCP server). */
+  screenshot(maxWidth = 1280, quality = 0.85): string | null {
+    const w = this.el.clientWidth, h = this.el.clientHeight; if (!w || !h) return null;
+    const k = Math.min(1, maxWidth / w);
+    return this.snapshot(Math.round(w * k), Math.round(h * k), quality);
+  }
+
   /** Render once and return a downscaled JPEG data URL of the viewport (project thumbnails). */
   snapshot(width = 480, height = 300, quality = 0.82): string | null {
     try {
-      const w = this.el.clientWidth, h = this.el.clientHeight; if (!w || !h) return null;
-      this.renderer.setScissorTest(false); this.renderer.setViewport(0, 0, w, h); this.renderer.render(this.scene, this.camera);
+      // render over the renderer's whole drawing buffer (not the element's CSS size: after a resize they can differ and a
+      // partial viewport leaves the previous frame in the rest of the buffer, which shows up as a torn capture)
+      const size = this.renderer.getSize(new THREE.Vector2()); const w = size.x, h = size.y; if (!w || !h) return null;
+      // autoClear is off for the view-cube overlay in the main loop, so clear explicitly or the capture double-exposes
+      this.renderer.setScissorTest(false); this.renderer.setViewport(0, 0, w, h); this.renderer.clear(); this.renderer.render(this.scene, this.camera);
       const src = this.renderer.domElement; const c = document.createElement('canvas'); c.width = width; c.height = height;
       const g = c.getContext('2d')!; g.fillStyle = '#0d0f13'; g.fillRect(0, 0, width, height);
       // cover-fit crop of the viewport
@@ -415,17 +425,24 @@ export class SceneController {
   }
 
   // ---------- camera ----------
-  viewDirection(dir: THREE.Vector3, toOrtho = true) {
+  viewDirection(dir: THREE.Vector3, toOrtho = true, immediate = false) {
     const d = dir.clone().normalize();
     const up = Math.abs(d.z) > 0.999 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
     const fromDir = new THREE.Vector3().subVectors(this.camera.position, this.controls.target).normalize();
     const dist = this.camera.position.distanceTo(this.controls.target) || 300;
     const q = new THREE.Quaternion().setFromUnitVectors(fromDir, d);
+    if (immediate) {
+      // snap straight to the view (screenshots, hidden windows where no animation frames run)
+      this.anim = null;
+      this.camera.position.copy(this.controls.target).addScaledVector(d, dist);
+      this.camera.up.copy(up); this.camera.lookAt(this.controls.target); this.setProjection(toOrtho ? 'ortho' : 'persp'); this.controls.update();
+      return;
+    }
     this.anim = { t0: performance.now(), dur: 450, fromDir, q, fromUp: this.camera.up.clone(), toUp: up, dist, toOrtho };
   }
-  viewNamed(name: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso') {
+  viewNamed(name: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso', immediate = false) {
     const m: Record<string, [number, number, number]> = { top: [0, 0, 1], bottom: [0, 0, -1], front: [0, -1, 0], back: [0, 1, 0], left: [-1, 0, 0], right: [1, 0, 0], iso: [-1, -1, 1] };
-    this.viewDirection(new THREE.Vector3(...m[name]), name !== 'iso');
+    this.viewDirection(new THREE.Vector3(...m[name]), name !== 'iso', immediate);
   }
   private stepAnim(now: number) {
     const a = this.anim; if (!a) return;

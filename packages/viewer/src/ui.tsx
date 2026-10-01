@@ -86,6 +86,24 @@ export function UiProvider({ children }: { children: ReactNode }) {
   useEffect(() => { fetch('/api/machines').then(r => r.json()).then((m: MachineProfile[]) => { if (Array.isArray(m)) setMachines(m); }).catch(() => {}); }, []);
   const saveMachines = useCallback((m: MachineProfile[]) => { setMachines(m); fetch('/api/machines', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(m) }).catch(() => {}); }, []);
   // context help: track the element under the mouse (throttled to one update per frame; the help panel itself is ignored)
+  // screenshots for the MCP server: the API broadcasts a `snapshot` event, the viewer renders the viewport and posts the JPEG back
+  useEffect(() => {
+    let es: EventSource | null = null;
+    try { es = new EventSource('/api/events'); } catch { return; }
+    es.addEventListener('snapshot', async (ev) => {
+      let spec: { id: string; view?: string; fit?: boolean; maxWidth?: number; quality?: number };
+      try { spec = JSON.parse((ev as MessageEvent).data); } catch { return; }
+      const post = (body: BodyInit) => fetch(`/api/snapshot/${encodeURIComponent(spec.id)}`, { method: 'POST', headers: { 'content-type': 'image/jpeg' }, body }).catch(() => {});
+      const sc = sceneRef.current; if (!sc) { post(new Uint8Array(0)); return; }
+      if (spec.view && spec.view !== 'current') sc.viewNamed(spec.view as 'top' | 'iso', true); // snap, no animation
+      if (spec.fit) sc.fit();
+      await new Promise(r => setTimeout(r, 60)); // let React/three apply the state before the explicit render in screenshot()
+      const url = sc.screenshot(spec.maxWidth ?? 1280, spec.quality ?? 0.85);
+      if (!url) { post(new Uint8Array(0)); return; }
+      post(Uint8Array.from(atob(url.split(',')[1]), c => c.charCodeAt(0)));
+    });
+    return () => es?.close();
+  }, []);
   const [hover, setHover] = useState<HelpInfo | null>(null);
   useEffect(() => {
     // a timer, not requestAnimationFrame: frames stop when the window is hidden or behind another one

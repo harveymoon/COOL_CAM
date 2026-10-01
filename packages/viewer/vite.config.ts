@@ -15,6 +15,7 @@ export function coolCamApi(): Plugin {
     configureServer(server) {
       const api = createApi({ jobsDir: process.env.COOL_CAM_JOBS_DIR ?? path.join(root, 'jobs'), bundledLibrary: path.join(root, 'library', 'tools.json'), fontDirs: [path.join(root, 'library', 'fonts')] });
       server.middlewares.use((req, res, next) => { if (!api.handle(req, res)) next(); });
+      server.httpServer?.once('listening', () => { const a = server.httpServer?.address(); if (a && typeof a === 'object') api.announce(`http://localhost:${a.port}/`); });
       server.httpServer?.once('close', () => api.close());
     },
   };

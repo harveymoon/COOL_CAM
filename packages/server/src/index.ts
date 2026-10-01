@@ -28,6 +28,8 @@ export interface Api {
   /** Subscribe to job-folder changes (debounced). */
   onJobsChanged(cb: (file: string | null) => void): () => void;
   close(): void;
+  /** Record where this API is reachable (`<userDir>/api.json`) so the MCP server can find the viewer, e.g. for screenshots. */
+  announce(url: string): void;
 }
 
 /** Platform font folders the text tool can read TTF/OTF files from. */
@@ -84,6 +86,10 @@ export function createApi(opts: ApiOptions): Api {
   const fontDirs = defaultFontDirs(opts.fontDirs);
   const listeners = new Set<(file: string | null) => void>();
   const clients = new Set<http.ServerResponse>();
+  // viewport screenshots: a GET parks here until a connected viewer renders and POSTs the JPEG back (or it times out)
+  const pendingShots = new Map<string, { resolve: (buf: Buffer) => void; reject: (e: Error) => void }>();
+  const announceFile = path.join(library.userDir, 'api.json');
+  let announced = false;
   let timer: NodeJS.Timeout | null = null;
   let watcher: fs.FSWatcher | null = null;
   try {
@@ -111,6 +117,22 @@ export function createApi(opts: ApiOptions): Api {
         const name = decodeURIComponent(route.slice('/api/fonts/'.length));
         const hit = listFonts(fontDirs).find(f => f.name === name); if (!hit) { res.statusCode = 404; res.end('font not found'); return true; }
         res.setHeader('content-type', 'font/ttf'); res.end(fs.readFileSync(hit.file)); return true;
+      }
+      if (route === '/api/snapshot') {
+        if (!clients.size) { json(res, { error: 'No viewer is connected. Open Cool CAM (the app, or npm run dev) and try again.' }, 503); return true; }
+        const q = new URL(url, 'http://x').searchParams;
+        const id = Math.random().toString(36).slice(2);
+        const spec = { id, view: q.get('view') ?? 'current', fit: q.get('fit') === '1' || q.get('fit') === 'true', maxWidth: Math.min(2560, Math.max(320, Number(q.get('maxWidth')) || 1280)), quality: Math.min(1, Math.max(0.3, Number(q.get('quality')) || 0.85)) };
+        const timeout = setTimeout(() => { pendingShots.delete(id); json(res, { error: 'The viewer did not answer within 10 s.' }, 504); }, 10000);
+        pendingShots.set(id, { resolve: buf => { clearTimeout(timeout); pendingShots.delete(id); res.statusCode = 200; res.setHeader('content-type', 'image/jpeg'); res.setHeader('cache-control', 'no-cache'); res.end(buf); }, reject: e => { clearTimeout(timeout); pendingShots.delete(id); json(res, { error: e.message }, 500); } });
+        for (const c of clients) c.write(`event: snapshot\ndata: ${JSON.stringify(spec)}\n\n`);
+        return true;
+      }
+      if (route.startsWith('/api/snapshot/')) {
+        const id = route.slice('/api/snapshot/'.length); const p = pendingShots.get(id);
+        if (!p) { json(res, { error: 'unknown or expired snapshot request' }, 404); return true; }
+        if (req.method === 'POST' || req.method === 'PUT') { readBytes(req).then(buf => { if (buf.length < 100) p.reject(new Error('The viewer sent an empty image (is a project open?).')); else p.resolve(buf); json(res, { ok: true }); }).catch(e => { p.reject(e as Error); json(res, { error: (e as Error).message }, 500); }); return true; }
+        json(res, { error: 'POST the JPEG' }, 405); return true;
       }
       if (route === '/api/machines') {
         // the user's own machine profiles, next to the tool library; presets ship in core
@@ -167,7 +189,8 @@ export function createApi(opts: ApiOptions): Api {
   return {
     jobsDir, library, fontDirs, handle,
     onJobsChanged: cb => { listeners.add(cb); return () => listeners.delete(cb); },
-    close: () => { watcher?.close(); for (const c of clients) c.end(); clients.clear(); },
+    close: () => { watcher?.close(); for (const c of clients) c.end(); clients.clear(); for (const p of pendingShots.values()) p.reject(new Error('server closed')); pendingShots.clear(); if (announced) { try { const cur = JSON.parse(fs.readFileSync(announceFile, 'utf8')); if (cur.pid === process.pid) fs.unlinkSync(announceFile); } catch { /* ignore */ } } },
+    announce: (url: string) => { try { fs.mkdirSync(library.userDir, { recursive: true }); fs.writeFileSync(announceFile, JSON.stringify({ url, jobsDir, pid: process.pid, startedAt: new Date().toISOString() }, null, 1)); announced = true; } catch { /* best effort */ } },
   };
 }
 
@@ -204,6 +227,6 @@ export function startServer(opts: ServerOptions): Promise<{ server: http.Server;
   });
   return new Promise((resolve, reject) => {
     server.on('error', reject);
-    server.listen(opts.port ?? 0, host, () => { const a = server.address() as { port: number }; resolve({ server, port: a.port, api, url: `http://${host}:${a.port}/` }); });
+    server.listen(opts.port ?? 0, host, () => { const a = server.address() as { port: number }; const url = `http://${host}:${a.port}/`; api.announce(url); resolve({ server, port: a.port, api, url }); });
   });
 }

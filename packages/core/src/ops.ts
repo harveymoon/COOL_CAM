@@ -126,4 +126,24 @@ export interface Finish3DOp extends OpBase {
   finishFloor?: boolean;
 }
 
-export type Op = ProfileOp | PocketOp | DrillOp | Rough3DOp | Finish3DOp | VCarveOp | KeyholeOp;
+/**
+ * Trace: follow ready-made 3D paths with the tool tip (the pro-CAM "trace along curve" strategy). `tip` runs the points as
+ * given; `project` keeps the XY and takes Z from the drop-cutter offset surface of `modelId`, so the pass is gouge-safe by
+ * construction and the given Z only serves as a cross-check. Either way the result goes through the simulator and the post.
+ */
+export interface TraceOp extends OpBase {
+  type: 'trace';
+  pathIds: string[];
+  mode: 'tip' | 'project';
+  modelId?: string;
+  /** Project mode: material left on the model surface, mm (default 0). */
+  stockToLeave?: number;
+  /** Project mode: heightmap cell size, mm (default auto). */
+  resolution?: number;
+  /** Tip mode: added to every Z, mm (e.g. −0.1 to cut slightly deeper). */
+  depthOffset?: number;
+  /** Planned engagement for the simulator's check, mm: how much material a pass may meet (default: the tool diameter). */
+  stepdown?: number;
+}
+
+export type Op = ProfileOp | PocketOp | DrillOp | Rough3DOp | Finish3DOp | VCarveOp | KeyholeOp | TraceOp;

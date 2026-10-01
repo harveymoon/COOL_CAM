@@ -2,6 +2,7 @@ export * from './geometry/vec.js';
 export * from './geometry/polyline.js';
 export * from './geometry/offset.js';
 export * from './io/dxf.js';
+export * from './io/paths.js';
 export * from './io/svg.js';
 export * from './io/stl.js';
 export * from './mesh.js';

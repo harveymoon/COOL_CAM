@@ -170,7 +170,9 @@ export class StockSim {
     const isRapid = m.kind === 'rapid' || m.kind === 'retract';
     const t = this.machine.travel; const b = stockBounds(this.job.stock);
     // machine envelope check: X/Y relative to stock origin can't be known without homing offsets; check Z and sanity only.
-    if (m.z < b.bottom - 1e-6 && !isRapid) this.event('error', 'below-stock', `Cut goes ${(b.bottom - m.z).toFixed(2)} mm below the stock bottom (into the wasteboard).`, m);
+    // the spoilboard allowance is planned cutting into a sacrificial board (the simulator already treats everything under the
+    // stock bottom as material, so engagement checks see it); beyond the allowance it is an error
+    if (m.z < b.floor - 1e-6 && !isRapid) this.event('error', 'below-stock', `Cut goes ${(b.bottom - m.z).toFixed(2)} mm below the stock bottom${b.floor < b.bottom ? ` (allowance ${(b.bottom - b.floor).toFixed(2)} mm)` : ''} into the wasteboard.`, m);
     if (m.z > b.top + t.z) this.event('warning', 'outside-envelope', `Z ${m.z.toFixed(1)} exceeds Z travel.`, m);
     let removed = 0; let rapidHit = false; let engagement = 0; let radial = 0; let wall = 0; let bulk = 0;
     const lxy = Math.hypot(dx, dy); const ux = lxy > 1e-9 ? dx / lxy : 0, uy = lxy > 1e-9 ? dy / lxy : 0;

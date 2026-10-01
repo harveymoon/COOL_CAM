@@ -27,6 +27,10 @@ export function JobPanel() {
         <Num label="safe Z" value={job.safeZ} step={1} hint="rapid height between operations" onChange={v => setJob(j => ({ ...j, safeZ: v ?? 10 }))} />
         <Num label="clearance Z" value={job.clearanceZ} step={0.5} hint="retract height inside an operation" onChange={v => setJob(j => ({ ...j, clearanceZ: v ?? 3 }))} />
       </div>
+      <div className="grid2">
+        <Num label="spoilboard allowance" value={stock.spoilboard} step={0.1} placeholder="0" hint="mm below the stock bottom that cuts may reach (through-cuts into a sacrificial board); the simulator treats it as material and only errors beyond it" onChange={v => setJob(j => ({ ...j, stock: { ...j.stock, spoilboard: v && v > 0 ? v : undefined } }))} />
+        <div className="row"><span className="lbl">paths</span><span className="mono">{job.paths?.length ?? 0}</span></div>
+      </div>
       <div className="kv" style={{ marginTop: 8 }}>
         <div>shapes</div><div>{job.shapes.length}</div>
         <div>operations</div><div>{job.ops.length}</div>

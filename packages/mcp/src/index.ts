@@ -5,7 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import {
-  newJob, parseDxf, parseSvg, bbox, uid, generateToolpaths, estimate, formatDuration, feedsAndSpeeds, MATERIALS, MACHINE_PRESETS, SHAPEOKO_HDM, machineFor, validateMachine,
+  newJob, parseDxf, parseDxf3D, parsePathsJson, parseSvg, bbox, uid, generateToolpaths, estimate, formatDuration, feedsAndSpeeds, MATERIALS, MACHINE_PRESETS, SHAPEOKO_HDM, machineFor, validateMachine,
   rect, circleShape, polygon, regularPolygon, slot, signedArea, perimeter, stockBounds, getTool,
   parseStl, parseObj, meshBBox, placedMesh, placementFor, IDENTITY_PLACEMENT, getModel, proposeOperations,
   loadFont, textToPolylines, heightmapToMesh, decodeImage, translateParams,
@@ -39,7 +39,7 @@ const state = new JobState(jobsDir);
 
 const server = new McpServer({ name: 'cool-cam', version: '0.1.0' }, {
   instructions: `Cool CAM: 2.5D/3D CAM for GRBL-class CNC routers (defaults tuned for a Shapeoko HDM with Carbide Motion and BitSetter; see machine_info / set_machine). Units are mm. Work coordinates: X0/Y0 at the stock origin corner (default front-left), Z0 at stock top. Depths are positive numbers below the stock top.
-Typical flow: new_job → import_geometry / add_shape / import_model → (feeds_and_speeds) → add_operation (pocket / profile / drill / rough3d / finish3d) → generate → simulate → export_gcode. Every change is saved to ${jobsDir}/current.json which the web viewer (npm run dev) watches live.`,
+Typical flow: new_job → import_geometry / add_shape / import_model → (feeds_and_speeds) → add_operation (pocket / profile / drill / rough3d / finish3d / trace) → generate → simulate → export_gcode. Every change is saved to ${jobsDir}/current.json which the web viewer (npm run dev) watches live.`,
 });
 
 const text = (v: unknown) => ({ content: [{ type: 'text' as const, text: typeof v === 'string' ? v : JSON.stringify(v, null, 2) }] });
@@ -66,7 +66,7 @@ function jobSummary(job: Job) {
     name: job.name, machine: machineFor(job).name, material: job.material,
     stock: { ...job.stock, bounds: b }, safeZ: job.safeZ, clearanceZ: job.clearanceZ,
     tools: job.tools.map(t => ({ id: t.id, number: t.number, name: t.name, type: t.type, diameter: t.diameter, flutes: t.flutes, fluteLength: t.fluteLength, tipAngle: t.tipAngle, rpm: t.rpm, feed: t.feed, plunge: t.plunge })),
-    shapes: job.shapes.map(shapeSummary),
+    shapes: job.shapes.map(shapeSummary), paths: (job.paths ?? []).map(p => ({ id: p.id, tool: p.tool, layer: p.layer, points: p.points.length })),
     models: (job.models ?? []).map(modelSummary),
     ops: job.ops,
     savedTo: path.join(jobsDir, `${state.slug(job.name)}.json`),
@@ -74,6 +74,7 @@ function jobSummary(job: Job) {
 }
 
 const stockSchema = z.object({
+  spoilboard: z.number().min(0).optional().describe('Spoilboard allowance, mm below the stock bottom that cuts may reach (through-cuts); the simulator treats it as material and only errors beyond it'),
   width: z.number().positive().describe('X extent, mm'),
   length: z.number().positive().describe('Y extent, mm'),
   thickness: z.number().positive().describe('Z thickness, mm'),
@@ -122,7 +123,7 @@ server.registerTool('import_geometry', {
   const ext = path.extname(file).toLowerCase();
   const polys = ext === '.dxf' ? parseDxf(txt, { tolerance }) : ext === '.svg' ? parseSvg(txt, { tolerance }) : (() => { throw new Error('Only .dxf and .svg are supported'); })();
   const base = prefix ?? path.basename(file, ext).replace(/[^a-z0-9]+/gi, '_').toLowerCase();
-  const added: Shape[] = polys.map((p, i) => ({ id: `${base}_${i + 1}`, polyline: p, name: `${base} ${i + 1}` }));
+  const added: Shape[] = polys.map((p, i) => { const layer = (p as { layer?: string }).layer; return { id: `${base}_${i + 1}`, polyline: { points: p.points, closed: p.closed }, name: `${base} ${i + 1}`, layer, reference: layer ? /(^|_)REF(_|$)|REFERENCE/i.test(layer) || undefined : undefined }; });
   for (const s of added) { if (job.shapes.some(x => x.id === s.id)) s.id = uid(base); job.shapes.push(s); }
   state.invalidate(); state.save();
   const all = bbox(added.map(s => s.polyline));
@@ -323,6 +324,7 @@ const opSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('keyhole'), ...opBase, length: z.number().positive().optional(), angle: z.number().optional().describe('slot direction in degrees (90 = +Y)') }),
   z.object({ type: z.literal('drill'), ...opBase, peck: z.number().optional().describe('Peck depth mm (0 = single plunge)'), dwell: z.number().optional() }),
   z.object({ type: z.literal('rough3d'), ...opBase, shapeIds: z.array(z.string()).optional(), modelId: z.string(), stepover: z.number().positive().optional().describe('mm, default 40% of diameter'), direction: z.enum(['climb', 'conventional']).optional(), entry: z.enum(['plunge', 'helix', 'ramp']).optional(), stockToLeave: z.number().optional().describe('default 0.3 mm'), boundary: z.number().optional().describe('offset applied to the machining boundary, mm (default 0)'), boundaryMode: z.enum(['silhouette', 'bbox', 'stock', 'shapes']).optional().describe('machining boundary: model silhouette (default), model bbox, whole stock, or the op shapeIds'), containment: z.enum(['inside', 'center', 'outside']).optional().describe('tool inside the boundary (default), centre on it, or fully outside'), avoidShapeIds: z.array(z.string()).optional().describe('closed shapes excluded from machining'), resolution: z.number().positive().optional() }),
+  z.object({ type: z.literal('trace'), ...opBase, depth: z.number().optional().describe('ignored: taken from the paths'), shapeIds: z.array(z.string()).optional(), pathIds: z.array(z.string()).describe('ids from import_paths'), mode: z.enum(['tip', 'project']).describe('tip: Z as given, verified exactly against modelId when set (ball nose); project: Z from the drop-cutter surface of modelId (shallow surfaces only; too conservative on steep walls)'), modelId: z.string().optional().describe('model to verify against (tip) or project onto (project)'), stockToLeave: z.number().optional(), resolution: z.number().positive().optional(), depthOffset: z.number().optional(), stepdown: z.number().positive().optional().describe('planned engagement mm for the simulator check (default tool diameter)') }),
   z.object({ type: z.literal('finish3d'), ...opBase, shapeIds: z.array(z.string()).optional(), modelId: z.string(), stepover: z.number().positive().optional().describe('mm, default 10% of diameter'), axis: z.enum(['x', 'y']).optional(), stockToLeave: z.number().optional(), boundary: z.number().optional().describe('offset applied to the machining boundary, mm (default 0)'), boundaryMode: z.enum(['silhouette', 'bbox', 'stock', 'shapes']).optional(), containment: z.enum(['inside', 'center', 'outside']).optional(), avoidShapeIds: z.array(z.string()).optional(), finishFloor: z.boolean().optional().describe('also raster the flat floor at the model base (default false)'), resolution: z.number().positive().optional() }),
 ]);
 
@@ -334,7 +336,8 @@ server.registerTool('add_operation', {
   const job = state.require();
   getTool(job, op.toolId);
   for (const id of op.shapeIds ?? []) if (!job.shapes.some(s => s.id === id)) throw new Error(`Unknown shape ${id}`);
-  if ('modelId' in op) getModel(job, op.modelId);
+  if (op.type === 'trace') { for (const id of op.pathIds) if (!(job.paths ?? []).some(p => p.id === id)) throw new Error(`Unknown path ${id}. Import paths first (import_paths).`); if (op.mode === 'project' && !op.modelId) throw new Error('Project mode needs modelId.'); (op as { depth: number }).depth = op.depth ?? job.stock.thickness + (job.stock.spoilboard ?? 0); }
+  if ('modelId' in op && op.modelId) getModel(job, op.modelId);
   const full = { ...op, shapeIds: op.shapeIds ?? [], id: op.id ?? uid(op.type) } as Op;
   if (job.ops.some(o => o.id === full.id)) throw new Error(`Op id ${full.id} exists; use update_operation`);
   job.ops.push(full); state.invalidate(); state.save();
@@ -353,7 +356,7 @@ server.registerTool('update_operation', { title: 'Update operation', description
     if (!parsed.success) throw new Error(`Invalid patch: ${parsed.error.issues.map(i => `${i.path.join('.') || 'op'}: ${i.message}`).join('; ')}`);
     getTool(job, parsed.data.toolId);
     for (const sid of parsed.data.shapeIds ?? []) if (!job.shapes.some(s => s.id === sid)) throw new Error(`Unknown shape ${sid}`);
-    if ('modelId' in parsed.data) getModel(job, parsed.data.modelId);
+    if ('modelId' in parsed.data && parsed.data.modelId) getModel(job, parsed.data.modelId);
     Object.assign(op, patch); state.invalidate(); state.save(); return op;
   }));
 
@@ -401,6 +404,23 @@ server.registerTool('export_gcode', {
   fs.writeFileSync(file, r.gcode);
   const allWarnings = [...r.warnings, ...tps.flatMap(t => t.warnings.map(w => `${t.opName}: ${w}`)), ...sim.events.filter(e => e.severity === 'warning').map(e => `${e.opId}: ${e.message}`)];
   return { file, summary: summarizePost(r), simulation: errors.length ? `${errors.length} error(s), exported with force` : 'clean', warnings: allWarnings, head: r.gcode.split('\n').slice(0, 30).join('\n') };
+}));
+
+server.registerTool('import_paths', {
+  title: 'Import tool paths',
+  description: 'Import ready-made 3D tool-tip paths (a generator\'s JSON: array or {paths:[{id,tool,op,points:[[x,y,z],...]}]}, or a DXF with 3D POLYLINEs, one layer per tool) into the job as `paths`, then add a `trace` operation on them. Points are mm in job coordinates (Z relative to Z0).',
+  inputSchema: { path: z.string().describe('Absolute path to a .json or .dxf file'), prefix: z.string().optional().describe('Id prefix (default: file name)') },
+}, guarded(({ path: file, prefix }) => {
+  const job = state.require();
+  const ext = path.extname(file).toLowerCase(); const text = fs.readFileSync(file, 'utf8');
+  const base = prefix ?? path.basename(file, ext).replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+  const paths = ext === '.json' ? parsePathsJson(text, { prefix: base }) : ext === '.dxf' ? parseDxf3D(text).map((p, i) => ({ id: `${base}_${i + 1}`, layer: p.layer, tool: p.layer?.match(/([FB]\d{2,3})/i)?.[1], points: p.points })) : (() => { throw new Error('Only .json and .dxf are supported'); })();
+  job.paths = job.paths ?? [];
+  for (const p of paths) { if (job.paths.some(x => x.id === p.id)) p.id = uid(base); job.paths.push(p); }
+  state.invalidate(); state.save();
+  const zs = paths.flatMap(p => p.points.map(q => q[2]));
+  const byTool: Record<string, number> = {}; for (const p of paths) byTool[p.tool ?? p.layer ?? '?'] = (byTool[p.tool ?? p.layer ?? '?'] ?? 0) + 1;
+  return { imported: paths.length, byTool, zRange: zs.length ? [Math.min(...zs), Math.max(...zs)] : null, ids: paths.map(p => p.id), next: "add_operation { type: 'trace', pathIds, mode: 'project', modelId } (or mode 'tip' without a model)" };
 }));
 
 server.registerTool('machine_info', { title: 'Machine info', description: "The current job's machine profile (travel, feeds, spindle, tool-change mode, safe machine Z), the built-in machine presets, and the materials known to the feeds calculator.", inputSchema: {} },

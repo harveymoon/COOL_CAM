@@ -23,7 +23,7 @@ export function generateRough3D(job: Job, op: Rough3DOp): Toolpath {
   // Z levels: from one stepdown below the stock top down to the model base (or the op depth limit), last level exact.
   // Levels always start at the stock top so every cut engages one stepdown; the Z window (startDepth) only decides *which cells*
   // are machined: cells whose finished surface lies above zStart are left alone at every level.
-  const zBottom = Math.max(modelBase + (op.stockToLeave ?? 0.3), ctx.stockTop - op.depth, ctx.stockBottom);
+  const zBottom = Math.max(modelBase + (op.stockToLeave ?? 0.3), ctx.stockTop - op.depth, ctx.floor);
   const levels: number[] = [];
   const zStart = ctx.stockTop - (op.startDepth ?? 0);
   for (let z = ctx.stockTop - stepdown; z > zBottom + 1e-6; z -= stepdown) levels.push(z);

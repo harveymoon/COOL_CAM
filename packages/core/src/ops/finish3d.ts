@@ -15,7 +15,7 @@ export function generateFinish3D(job: Job, op: Finish3DOp): Toolpath {
   try { surf = surfaceFor(job, op, tool, res); } catch (e) { ctx.warnings.push((e as Error).message); return done(); }
   const { offMasked: off, domain } = surf;
   if (!surf.allowed.length) { ctx.warnings.push('The machining boundary leaves no room for the tool centre (try containment "center" or a larger offset).'); return done(); }
-  const zMin = Math.max(ctx.stockTop - op.depth, ctx.stockBottom);
+  const zMin = Math.max(ctx.stockTop - op.depth, ctx.floor);
   // Z window: samples above the start depth count as air (skipped), samples below the depth limit are clamped
   const top = ctx.stockTop - (op.startDepth ?? 0); const air = top - 1e-3;
   const alongX = (op.axis ?? 'x') === 'x';

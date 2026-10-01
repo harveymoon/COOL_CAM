@@ -192,3 +192,62 @@ export function contoursBelow(hm: Heightmap, level: number, domain?: { i0: numbe
   if (dropped) throw new Error(`contoursBelow: ${dropped} contour(s) did not close (internal error, refusing to guess the cut region)`);
   return loops.map(l => simplify(l, res * 0.15));
 }
+
+/** Exact distance from a point to triangle (a, b, c) — Ericson, Real-Time Collision Detection §5.1.5. */
+export function pointTriangleDistance(px: number, py: number, pz: number, P: ArrayLike<number>, i: number): number {
+  const ax = P[i], ay = P[i + 1], az = P[i + 2], bx = P[i + 3], by = P[i + 4], bz = P[i + 5], cx = P[i + 6], cy = P[i + 7], cz = P[i + 8];
+  const abx = bx - ax, aby = by - ay, abz = bz - az, acx = cx - ax, acy = cy - ay, acz = cz - az, apx = px - ax, apy = py - ay, apz = pz - az;
+  const d1 = abx * apx + aby * apy + abz * apz, d2 = acx * apx + acy * apy + acz * apz;
+  if (d1 <= 0 && d2 <= 0) return Math.hypot(apx, apy, apz);
+  const bpx = px - bx, bpy = py - by, bpz = pz - bz; const d3 = abx * bpx + aby * bpy + abz * bpz, d4 = acx * bpx + acy * bpy + acz * bpz;
+  if (d3 >= 0 && d4 <= d3) return Math.hypot(bpx, bpy, bpz);
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) { const v = d1 / (d1 - d3); return Math.hypot(apx - v * abx, apy - v * aby, apz - v * abz); }
+  const cpx = px - cx, cpy = py - cy, cpz = pz - cz; const d5 = abx * cpx + aby * cpy + abz * cpz, d6 = acx * cpx + acy * cpy + acz * cpz;
+  if (d6 >= 0 && d5 <= d6) return Math.hypot(cpx, cpy, cpz);
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) { const w = d2 / (d2 - d6); return Math.hypot(apx - w * acx, apy - w * acy, apz - w * acz); }
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) { const w = (d4 - d3) / ((d4 - d3) + (d5 - d6)); return Math.hypot(px - (bx + w * (cx - bx)), py - (by + w * (cy - by)), pz - (bz + w * (cz - bz))); }
+  const denom = 1 / (va + vb + vc); const v = vb * denom, w = vc * denom;
+  return Math.hypot(px - (ax + abx * v + acx * w), py - (ay + aby * v + acy * w), pz - (az + abz * v + acz * w));
+}
+
+/**
+ * Exact point-to-mesh distance with a uniform XY grid over triangle bounding boxes. Used to verify ready-made tool paths:
+ * a ball nose of radius r at tip (x, y, z) clears the model by `distance(x, y, z + r) − r` (negative = gouge).
+ */
+export class MeshDistance {
+  private cell: number; private x0: number; private y0: number; private nx: number; private ny: number; private cells: Int32Array[]; private tb: Float64Array;
+  constructor(private P: Float32Array | Float64Array, cell = 4) {
+    const n = P.length / 9; this.tb = new Float64Array(n * 6);
+    let gx0 = Infinity, gy0 = Infinity, gx1 = -Infinity, gy1 = -Infinity;
+    for (let t = 0; t < n; t++) { const i = t * 9; let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity; for (let k = 0; k < 3; k++) { const x = P[i + k * 3], y = P[i + k * 3 + 1], z = P[i + k * 3 + 2]; if (x < x0) x0 = x; if (y < y0) y0 = y; if (z < z0) z0 = z; if (x > x1) x1 = x; if (y > y1) y1 = y; if (z > z1) z1 = z; } this.tb[t * 6] = x0; this.tb[t * 6 + 1] = y0; this.tb[t * 6 + 2] = z0; this.tb[t * 6 + 3] = x1; this.tb[t * 6 + 4] = y1; this.tb[t * 6 + 5] = z1; if (x0 < gx0) gx0 = x0; if (y0 < gy0) gy0 = y0; if (x1 > gx1) gx1 = x1; if (y1 > gy1) gy1 = y1; }
+    this.cell = cell; this.x0 = gx0; this.y0 = gy0; this.nx = Math.max(1, Math.ceil((gx1 - gx0) / cell) + 1); this.ny = Math.max(1, Math.ceil((gy1 - gy0) / cell) + 1);
+    const buckets: number[][] = Array.from({ length: this.nx * this.ny }, () => []);
+    for (let t = 0; t < n; t++) { const o = t * 6; const i0 = this.ix(this.tb[o]), i1 = this.ix(this.tb[o + 3]), j0 = this.iy(this.tb[o + 1]), j1 = this.iy(this.tb[o + 4]); for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) buckets[j * this.nx + i].push(t); }
+    this.cells = buckets.map(b => Int32Array.from(b));
+  }
+  private ix(x: number) { return Math.min(this.nx - 1, Math.max(0, Math.floor((x - this.x0) / this.cell))); }
+  private iy(y: number) { return Math.min(this.ny - 1, Math.max(0, Math.floor((y - this.y0) / this.cell))); }
+  /** Distance from (x, y, z) to the nearest triangle, searching outward in rings of grid cells until nothing closer can exist. */
+  distance(x: number, y: number, z: number, maxSearch = 50): number {
+    let best = Infinity;
+    const ci = this.ix(x), cj = this.iy(y);
+    for (let ring = 0; ring * this.cell - this.cell <= Math.min(best, maxSearch); ring++) {
+      for (let j = cj - ring; j <= cj + ring; j++) {
+        if (j < 0 || j >= this.ny) continue;
+        for (let i = ci - ring; i <= ci + ring; i++) {
+          if (i < 0 || i >= this.nx) continue;
+          if (Math.abs(i - ci) !== ring && Math.abs(j - cj) !== ring) continue; // only the ring's perimeter
+          for (const t of this.cells[j * this.nx + i]) {
+            const o = t * 6;
+            if (x < this.tb[o] - best || x > this.tb[o + 3] + best || y < this.tb[o + 1] - best || y > this.tb[o + 4] + best || z < this.tb[o + 2] - best || z > this.tb[o + 5] + best) continue;
+            const d = pointTriangleDistance(x, y, z, this.P, t * 9); if (d < best) best = d;
+          }
+        }
+      }
+    }
+    return best;
+  }
+}

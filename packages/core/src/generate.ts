@@ -8,6 +8,7 @@ import { generateRough3D } from './ops/rough3d.js';
 import { generateFinish3D } from './ops/finish3d.js';
 import { generateVCarve, flatMoves } from './ops/vcarve.js';
 import { generateKeyhole } from './ops/keyhole.js';
+import { generateTrace } from './ops/trace.js';
 
 export function generateOp(job: Job, op: Op): Toolpath {
   switch (op.type) {
@@ -18,15 +19,20 @@ export function generateOp(job: Job, op: Op): Toolpath {
     case 'finish3d': return generateFinish3D(job, op);
     case 'vcarve': return generateVCarve(job, op);
     case 'keyhole': return generateKeyhole(job, op);
+    case 'trace': return generateTrace(job, op);
     default: throw new Error(`Unknown op type ${(op as Op).type}`);
   }
 }
 
 export function generateToolpaths(job: Job): Toolpath[] {
   const out: Toolpath[] = [];
-  for (const op of job.ops.filter(o => o.enabled !== false)) {
+  for (const op0 of job.ops.filter(o => o.enabled !== false)) {
+    // reference-only shapes are never machined: drop them from the op and say so
+    const refs = (op0.shapeIds ?? []).filter(id => job.shapes.find(s => s.id === id)?.reference);
+    const op = refs.length ? { ...op0, shapeIds: op0.shapeIds.filter(id => !refs.includes(id)) } as Op : op0;
     try {
       const tp = generateOp(job, op);
+      if (refs.length) tp.warnings.push(`Reference shape(s) ${refs.join(', ')} were skipped.`);
       // advanced V-carve: the flat-clearing pass runs first with its own tool and its own toolpath id (`<op>:flat`)
       if (op.type === 'vcarve') { const flat = flatMoves.get(op.id); flatMoves.delete(op.id); if (flat && flat.moves.length) out.push({ opId: `${op.id}:flat`, opName: `${op.name ?? 'V-carve'} · flat clearing`, toolId: flat.toolId, rpm: flat.rpm, moves: flat.moves, warnings: flat.warnings, stepdown: flat.stepdown }); }
       out.push(tp);

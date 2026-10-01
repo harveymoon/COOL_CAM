@@ -52,3 +52,16 @@ describe('engagement checks', () => {
     expect(s.cells.res).toBeLessThanOrEqual(3.175 / 4 + 1e-9); // resolution follows the smallest cutter
   });
 });
+
+describe('spoilboard allowance', () => {
+  it('accepts cuts inside the allowance and errors beyond it', () => {
+    const mk = (z: number): Toolpath => ({ opId: 'p', opName: 'p', toolId: 't102', rpm: 18000, warnings: [], stepdown: 1, moves: [
+      { kind: 'rapid', x: 10, y: 30, z: 3 }, { kind: 'plunge', x: 10, y: 30, z, f: 300 }, { kind: 'cut', x: 30, y: 30, z, f: 1000 }, { kind: 'retract', x: 30, y: 30, z: 3 },
+    ] });
+    const j = newJob('sb', { width: 60, length: 60, thickness: 5 });
+    expect(errorsOf(simulate(j, [mk(-5.4)], { resolution: 0.2 }), 'below-stock').length).toBeGreaterThan(0);
+    j.stock.spoilboard = 1;
+    expect(errorsOf(simulate(j, [mk(-5.4)], { resolution: 0.2 }), 'below-stock').length).toBe(0);
+    expect(errorsOf(simulate(j, [mk(-6.4)], { resolution: 0.2 }), 'below-stock').length).toBeGreaterThan(0);
+  });
+});

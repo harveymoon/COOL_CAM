@@ -17,6 +17,8 @@ export interface OpContext {
   clearanceZ: number;
   stockTop: number;
   stockBottom: number;
+  /** Stock bottom minus the spoilboard allowance: the lowest Z a planner may cut to. */
+  floor: number;
   /** Z levels to cut, from first pass to final (absolute). */
   passes: number[];
   /** Depth per pass actually used for `passes` (mm). */
@@ -42,8 +44,9 @@ export function makeContext(job: Job, op: OpBase): OpContext {
     for (let i = 1; i <= n; i++) passes.push(b.top - Math.min(op.depth, start + i * dpp));
   }
   if (tool.fluteLength && op.depth > tool.fluteLength) warnings.push(`Depth ${op.depth} mm exceeds flute length ${tool.fluteLength} mm of ${tool.name}.`);
-  if (op.depth > job.stock.thickness + 1e-6) warnings.push(`Depth ${op.depth} mm is deeper than the stock (${job.stock.thickness} mm). The cutter will hit the wasteboard.`);
-  return { job, tool, rpm, feed, plunge, safeZ: b.top + job.safeZ, clearanceZ: b.top + job.clearanceZ, stockTop: b.top, stockBottom: b.bottom, passes, stepdown: Math.min(dpp, Math.max(total, 0) || dpp), warnings };
+  const allowance = Math.max(0, job.stock.spoilboard ?? 0);
+  if (op.depth > job.stock.thickness + allowance + 1e-6) warnings.push(`Depth ${op.depth} mm is deeper than the stock (${job.stock.thickness} mm)${allowance ? ` plus the ${allowance} mm spoilboard allowance` : ''}. The cutter will hit the wasteboard.`);
+  return { job, tool, rpm, feed, plunge, safeZ: b.top + job.safeZ, clearanceZ: b.top + job.clearanceZ, stockTop: b.top, stockBottom: b.bottom, floor: b.floor, passes, stepdown: Math.min(dpp, Math.max(total, 0) || dpp), warnings };
 }
 
 export class MoveList {

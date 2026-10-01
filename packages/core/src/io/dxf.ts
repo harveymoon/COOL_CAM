@@ -82,12 +82,14 @@ function evalNurbs(deg: number, ctrl: Vec2[], knots: number[], weights: number[]
   return { x: d[deg].x / d[deg].w, y: d[deg].y / d[deg].w };
 }
 
-export function parseDxf(text: string, opts: DxfImportOptions = {}): Polyline[] {
+export function parseDxf(text: string, opts: DxfImportOptions = {}): (Polyline & { layer?: string })[] {
   const tol = opts.tolerance ?? 0.01;
   const { entities, insunits } = collectEntities(pairs(text));
   const raw: Polyline[] = [];
+  const layers: string[] = [];
   for (let idx = 0; idx < entities.length; idx++) {
     const e = entities[idx];
+    const before = raw.length;
     switch (e.type) {
       case 'LINE':
         raw.push({ points: [{ x: num(e, 10), y: num(e, 20) }, { x: num(e, 11), y: num(e, 21) }], closed: false });
@@ -169,8 +171,42 @@ export function parseDxf(text: string, opts: DxfImportOptions = {}): Polyline[] 
       }
       default: break;
     }
+    for (let k = before; k < raw.length; k++) layers[k] = e.data.get(8)?.[0] ?? '';
   }
-  let result = chain(raw, opts.chainTolerance ?? 0.01);
-  if (opts.toMm !== false && insunits === 1) result = result.map(p => ({ points: p.points.map(q => ({ x: q.x * 25.4, y: q.y * 25.4 })), closed: p.closed }));
+  // chain per layer so layers survive import (Shape.layer) and segments never join across layers
+  const byLayer = new Map<string, Polyline[]>();
+  raw.forEach((p, i) => { const l = layers[i] ?? ''; const arr = byLayer.get(l) ?? []; arr.push(p); byLayer.set(l, arr); });
+  let result: (Polyline & { layer?: string })[] = [];
+  for (const [layer, polys] of byLayer) for (const c of chain(polys, opts.chainTolerance ?? 0.01)) result.push(layer ? { ...c, layer } : c);
+  if (opts.toMm !== false && insunits === 1) result = result.map(p => ({ ...p, points: p.points.map(q => ({ x: q.x * 25.4, y: q.y * 25.4 })) }));
   return result;
+}
+
+export interface Dxf3DPolyline { layer: string; closed: boolean; points: [number, number, number][] }
+
+/**
+ * 3D polylines from a DXF: POLYLINE/VERTEX (codes 10/20/30), LWPOLYLINE (elevation 38) and LINE (10/20/30 → 11/21/31).
+ * Used for ready-made tool-tip paths, one layer per tool. Inch files ($INSUNITS = 1) are converted to mm.
+ */
+export function parseDxf3D(text: string, opts: { toMm?: boolean } = {}): Dxf3DPolyline[] {
+  const { entities, insunits } = collectEntities(pairs(text));
+  const k = opts.toMm !== false && insunits === 1 ? 25.4 : 1;
+  const out: Dxf3DPolyline[] = [];
+  for (let idx = 0; idx < entities.length; idx++) {
+    const e = entities[idx]; const layer = e.data.get(8)?.[0] ?? '';
+    if (e.type === 'POLYLINE') {
+      const closed = (num(e, 70) & 1) === 1; const pts: [number, number, number][] = [];
+      let j = idx + 1;
+      while (j < entities.length && entities[j].type === 'VERTEX') { const v = entities[j]; pts.push([num(v, 10) * k, num(v, 20) * k, num(v, 30) * k]); j++; }
+      if (j < entities.length && entities[j].type === 'SEQEND') j++;
+      idx = j - 1;
+      if (pts.length >= 2) out.push({ layer, closed, points: pts });
+    } else if (e.type === 'LWPOLYLINE') {
+      const xs = nums(e, 10), ys = nums(e, 20); const z = num(e, 38) * k; const closed = (num(e, 70) & 1) === 1;
+      if (xs.length >= 2) out.push({ layer, closed, points: xs.map((x, i) => [x * k, ys[i] * k, z] as [number, number, number]) });
+    } else if (e.type === 'LINE') {
+      out.push({ layer, closed: false, points: [[num(e, 10) * k, num(e, 20) * k, num(e, 30) * k], [num(e, 11) * k, num(e, 21) * k, num(e, 31) * k]] });
+    }
+  }
+  return out;
 }

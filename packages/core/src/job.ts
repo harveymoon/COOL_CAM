@@ -22,6 +22,21 @@ export interface Shape {
   params?: ShapeParams;
   /** Text shapes produce several loops; siblings share a group id so they move together. */
   group?: string;
+  /** Reference geometry (outlines, check marks): shown, selectable, never machined. Operations drop it with a warning. */
+  reference?: boolean;
+}
+
+/**
+ * A ready-made 3D tool-tip path (mm, job coordinates): from an external generator's JSON, a 3D DXF polyline, or Cool CAM's
+ * own edge-following strategies. Points are where the tool tip goes: bottom centre of a flat cutter, bottom of a ball.
+ */
+export interface Path3D {
+  id: string;
+  name?: string;
+  layer?: string;
+  /** The generator's tool label (e.g. "B125"), used to group paths and suggest a tool. */
+  tool?: string;
+  points: [number, number, number][];
 }
 
 export interface Stock {
@@ -34,6 +49,12 @@ export interface Stock {
   origin: 'front-left' | 'center' | 'rear-left' | 'front-right' | 'rear-right';
   /** Z0 at stock top (recommended with BitSetter) or bottom. */
   zOrigin: 'top' | 'bottom';
+  /**
+   * Spoilboard allowance, mm: how far below the stock bottom cutting is planned and allowed (through-cuts into a sacrificial
+   * board, mitres finished through the face). Planners floor at bottom − allowance; the simulator treats the spoilboard as
+   * material and only reports `below-stock` beyond it. Default 0.
+   */
+  spoilboard?: number;
 }
 
 export interface Job {
@@ -53,6 +74,8 @@ export interface Job {
   shapes: Shape[];
   /** 3D models (STL/OBJ) for rough3d / finish3d ops. */
   models?: Model[];
+  /** 3D tool-tip paths for trace operations. */
+  paths?: Path3D[];
   ops: Op[];
   notes?: string;
 }
@@ -81,7 +104,10 @@ export function stockBounds(stock: Stock) {
     case 'rear-right': x0 = -stock.width; y0 = -stock.length; break;
   }
   const top = stock.zOrigin === 'top' ? 0 : stock.thickness;
-  return { x0, y0, x1: x0 + stock.width, y1: y0 + stock.length, top, bottom: top - stock.thickness };
+  const bottom = top - stock.thickness;
+  /** Lowest Z any cut may reach: the stock bottom minus the spoilboard allowance. */
+  const floor = bottom - Math.max(0, stock.spoilboard ?? 0);
+  return { x0, y0, x1: x0 + stock.width, y1: y0 + stock.length, top, bottom, floor };
 }
 
 export function getTool(job: Job, id: string): Tool {

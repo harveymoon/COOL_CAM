@@ -1,5 +1,5 @@
 import { feedsAndSpeeds, formatDuration, profileTabCenters } from '@cool-cam/core';
-import type { Op, ProfileOp, PocketOp, DrillOp, Rough3DOp, Finish3DOp, VCarveOp, KeyholeOp, MaterialId, Tabs, BoundaryMode, Containment } from '@cool-cam/core';
+import type { Op, ProfileOp, PocketOp, DrillOp, Rough3DOp, Finish3DOp, VCarveOp, KeyholeOp, MaterialId, Tabs, BoundaryMode, Containment, TraceOp, Job } from '@cool-cam/core';
 import type { ReactNode } from 'react';
 import { Num, Sel, Check } from './Fields';
 import { opDefaultName } from './actions';
@@ -55,7 +55,7 @@ export function OpEditorForm({ id }: { id: string }) {
       <Section title="Parameters">
         <div className="grid3">
           <Num label={op.type === 'rough3d' || op.type === 'finish3d' ? 'max depth' : op.type === 'vcarve' ? 'depth cap (0=none)' : 'depth'} value={op.depth} step={0.5} hint="depth limit below stock top" onChange={v => u({ depth: v ?? (op.type === 'vcarve' ? 0 : 1) })} />
-          {op.type !== 'finish3d' && op.type !== 'vcarve' && op.type !== 'keyhole' && <Num label={op.type === 'rough3d' ? 'stepdown' : 'per pass'} value={op.depthPerPass} step={0.5} placeholder={tool ? String(tool.diameter) : ''} onChange={v => u({ depthPerPass: v })} />}
+          {op.type !== 'finish3d' && op.type !== 'vcarve' && op.type !== 'keyhole' && op.type !== 'trace' && <Num label={op.type === 'rough3d' ? 'stepdown' : 'per pass'} value={op.depthPerPass} step={0.5} placeholder={tool ? String(tool.diameter) : ''} onChange={v => u({ depthPerPass: v })} />}
           {(op.type === 'profile' || op.type === 'pocket' || op.type === 'drill') && <Num label="start depth" value={op.startDepth} step={0.5} onChange={v => u({ startDepth: v })} />}
         </div>
         {op.type === 'profile' && <ProfileParams op={op} u={u} />}
@@ -65,6 +65,7 @@ export function OpEditorForm({ id }: { id: string }) {
         {op.type === 'keyhole' && <KeyholeFields op={op} u={u} />}
         {op.type === 'rough3d' && <Rough3DFields op={op} u={u} dia={tool?.diameter} />}
         {op.type === 'finish3d' && <Finish3DFields op={op} u={u} dia={tool?.diameter} />}
+        {op.type === 'trace' && <TraceFields op={op} u={u} job={job} dia={tool?.diameter} />}
       </Section>
 
       {op.type === 'profile' && <Section title="Tabs"><TabFields op={op} u={u} /></Section>}
@@ -210,6 +211,34 @@ function Rough3DFields({ op, u, dia }: { op: Rough3DOp; u: (p: Record<string, un
     </>
   );
 }
+function TraceFields({ op, u, job, dia }: { op: TraceOp; u: (p: Record<string, unknown>) => void; job: Job; dia?: number }) {
+  const paths = job.paths ?? [];
+  const groups = [...new Set(paths.map(p => p.tool ?? p.layer ?? 'paths'))];
+  const sel = new Set(op.pathIds ?? []);
+  const setIds = (ids: string[]) => u({ pathIds: ids });
+  return (
+    <>
+      <div className="grid3">
+        <Sel label="mode" value={op.mode} options={[{ value: 'tip', label: 'tip as given, verified against the model' }, { value: 'project', label: 'project Z onto the model (shallow surfaces)' }] as { value: 'project' | 'tip'; label: string }[]} onChange={v => u({ mode: v })} />
+        <Sel label={op.mode === 'project' ? 'model' : 'verify against'} value={op.modelId ?? ''} options={[...(op.mode === 'tip' ? [{ value: '', label: '— (no check)' }] : []), ...(job.models ?? []).map(m => ({ value: m.id, label: m.id }))]} onChange={v => u({ modelId: v || undefined })} />
+        {op.mode === 'project' ? <Num label="stock to leave" value={op.stockToLeave} step={0.05} placeholder="0" onChange={v => u({ stockToLeave: v })} /> : <Num label="depth offset" value={op.depthOffset} step={0.05} placeholder="0" hint="added to every Z (negative = deeper)" onChange={v => u({ depthOffset: v })} />}
+      </div>
+      <div className="grid2">
+        <Num label="planned engagement" value={op.stepdown} step={0.1} placeholder={dia ? dia.toFixed(2) : ''} hint="mm of material a pass may meet; the simulator flags deeper cuts" onChange={v => u({ stepdown: v })} />
+        {op.mode === 'project' && <Num label="resolution" value={op.resolution} step={0.05} placeholder="auto" hint="heightmap cell size, mm" onChange={v => u({ resolution: v })} />}
+      </div>
+      <div className="op-section-title">Paths ({sel.size} of {paths.length})</div>
+      <div className="btns">
+        <button onClick={() => setIds(paths.map(p => p.id))}>All</button><button onClick={() => setIds([])}>None</button>
+        {groups.map(g => <button key={g} onClick={() => setIds(paths.filter(p => (p.tool ?? p.layer ?? 'paths') === g).map(p => p.id))}>{g}</button>)}
+      </div>
+      <div className="list" style={{ maxHeight: 180 }}>
+        {paths.map(p => <label key={p.id} className="item" style={{ cursor: 'pointer' }}><input type="checkbox" checked={sel.has(p.id)} onChange={e => setIds(e.target.checked ? [...sel, p.id] : [...sel].filter(x => x !== p.id))} /> <span className="mono">{p.id}</span><span className="muted">{p.tool ?? p.layer ?? ''} · {p.points.length} pts</span></label>)}
+      </div>
+    </>
+  );
+}
+
 function Finish3DFields({ op, u, dia }: { op: Finish3DOp; u: (p: Record<string, unknown>) => void; dia?: number }) {
   return (
     <>

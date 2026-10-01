@@ -18,6 +18,7 @@ export function OpsPanel() {
         <button onClick={() => addOperation(ui, 'keyhole')}>+ Keyhole</button>
         <button onClick={() => addOperation(ui, 'rough3d')} disabled={!job.models?.length} title={job.models?.length ? '' : 'import a 3D model first'}>+ 3D Rough</button>
         <button onClick={() => addOperation(ui, 'finish3d')} disabled={!job.models?.length} title={job.models?.length ? '' : 'import a 3D model first'}>+ 3D Finish</button>
+        <button onClick={() => addOperation(ui, 'trace')} disabled={!job.paths?.length} title={job.paths?.length ? 'follow imported tool paths' : 'File → Import tool paths first'}>+ Trace</button>
         {ui.selectedShapes.length > 0 && <span className="muted">uses {ui.selectedShapes.length} selected shape(s)</span>}
       </div>
       {job.ops.length === 0 && <div className="empty">No operations. Select shapes, then add a pocket, profile or drill.</div>}
@@ -25,7 +26,7 @@ export function OpsPanel() {
         const tpIdx = derived?.toolpaths.findIndex(t => t.opId === op.id) ?? -1;
         const tp = tpIdx >= 0 ? derived!.toolpaths[tpIdx] : null; const st = tpIdx >= 0 ? derived!.stats[tpIdx] : null;
         const tool = job.tools.find(t => t.id === op.toolId); const open = activeOp === op.id;
-        const extra = op.type === 'profile' ? `${op.side}${op.tabs ? (op.tabs.mode === 'manual' ? ` · ${op.tabs.points?.length ?? 0} manual tabs` : op.tabs.count ? ` · ${op.tabs.count} tabs` : '') : ''}` : op.type === 'pocket' ? `${op.entry ?? 'helix'} entry · step ${op.stepover ?? (tool ? +(tool.diameter * 0.4).toFixed(2) : '?')}` : op.type === 'drill' ? `peck ${op.peck ?? 0}` : op.type === 'rough3d' ? `model ${op.modelId} · step ${op.stepover ?? '?'} · leave ${op.stockToLeave ?? 0.3}` : op.type === 'finish3d' ? `model ${op.modelId} · step ${op.stepover ?? '?'} · along ${op.axis ?? 'x'}` : op.type === 'vcarve' ? `${op.depth ? `cap ${op.depth} mm` : 'full V'}${op.flatToolId ? ' · flat clearing' : ''}` : `slot ${op.length ?? 20} mm @ ${op.angle ?? 90}°`;
+        const extra = op.type === 'profile' ? `${op.side}${op.tabs ? (op.tabs.mode === 'manual' ? ` · ${op.tabs.points?.length ?? 0} manual tabs` : op.tabs.count ? ` · ${op.tabs.count} tabs` : '') : ''}` : op.type === 'pocket' ? `${op.entry ?? 'helix'} entry · step ${op.stepover ?? (tool ? +(tool.diameter * 0.4).toFixed(2) : '?')}` : op.type === 'drill' ? `peck ${op.peck ?? 0}` : op.type === 'rough3d' ? `model ${op.modelId} · step ${op.stepover ?? '?'} · leave ${op.stockToLeave ?? 0.3}` : op.type === 'finish3d' ? `model ${op.modelId} · step ${op.stepover ?? '?'} · along ${op.axis ?? 'x'}` : op.type === 'vcarve' ? `${op.depth ? `cap ${op.depth} mm` : 'full V'}${op.flatToolId ? ' · flat clearing' : ''}` : op.type === 'keyhole' ? `slot ${op.length ?? 20} mm @ ${op.angle ?? 90}°` : `${op.pathIds?.length ?? 0} path(s) · ${op.mode === 'project' ? `projected onto ${op.modelId ?? '?'}` : 'tip as given'}`;
         return (
           <div className={`op acc${open ? ' active' : ''}${op.enabled === false ? ' off' : ''}`} key={op.id}>
             <header onClick={() => { setActiveOp(open ? null : op.id); if (!open && tpIdx >= 0) jumpTo(opOffsets[tpIdx] + (tp?.moves.length ?? 0)); }}>

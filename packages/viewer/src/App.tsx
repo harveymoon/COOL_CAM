@@ -19,7 +19,7 @@ import { ToolLibraryModal } from './modals/ToolLibraryModal';
 import { MachinesModal } from './modals/MachinesModal';
 import { PromptModal, ConfirmModal } from './modals/SmallModals';
 import { Landing } from './Landing';
-import { addOperation, deleteShapes, downloadGcode, duplicateShapes, importFile, importModelFile, syncToolsFromLibrary, openShapeParams, booleanShapes, offsetShapes } from './actions';
+import { addOperation, deleteShapes, downloadGcode, duplicateShapes, importFile, importModelFile, importPathsFile, syncToolsFromLibrary, openShapeParams, booleanShapes, offsetShapes } from './actions';
 import { PANELS, applyConstraints, defaultLayout, deleteLayout, floatPanel, loadLayout, persistCurrent, restoreCurrent, saveLayout, savedLayouts, showPanel } from './layout';
 import { useNativeMenu } from './nativeMenu';
 
@@ -33,6 +33,7 @@ function Shell() {
   const apiRef = useRef<DockviewApi | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const modelInput = useRef<HTMLInputElement>(null);
+  const pathsInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const [layoutTick, setLayoutTick] = useState(0);
 
@@ -74,6 +75,7 @@ function Shell() {
       { label: 'Import DXF / SVG…', onClick: () => fileInput.current?.click() },
       { label: 'Import 3D model (STL / OBJ)…', onClick: () => modelInput.current?.click() },
       { label: 'Import image as relief…', disabled: !ui.job, onClick: () => imageInput.current?.click() },
+      { label: 'Import tool paths (JSON / 3D DXF)…', disabled: !ui.job, onClick: () => pathsInput.current?.click() },
       { label: 'Export G-code (.nc)', disabled: !ui.derived?.toolpaths.some(t => t.moves.length), onClick: () => downloadGcode(ui) },
     ] },
     { label: 'Edit', items: [
@@ -102,6 +104,7 @@ function Shell() {
       { label: 'Add keyhole', disabled: !ui.job, onClick: () => addOperation(ui, 'keyhole') },
       { label: 'Add 3D rough', disabled: !ui.job?.models?.length, onClick: () => addOperation(ui, 'rough3d') },
       { label: 'Add 3D finish', disabled: !ui.job?.models?.length, onClick: () => addOperation(ui, 'finish3d') },
+      { label: 'Add trace (follow paths)', disabled: !ui.job?.paths?.length, onClick: () => addOperation(ui, 'trace') },
       'sep',
       { label: 'Sync job tools from library', disabled: !ui.job, onClick: () => syncToolsFromLibrary(ui, ui.library) },
     ] },
@@ -139,6 +142,7 @@ function Shell() {
     <div className="app">
       <MenuBar menus={nativeMenu ? [] : menus} right={<><button className="bar-btn" onClick={() => ui.openModal({ kind: 'tools' })} title="Tool library (Window → Tool library…)">Tools</button><span className="stat muted">{ui.error ? <span className="err">{ui.error} </span> : null}{ui.generating ? 'generating… ' : ''}{ui.saving ? 'saving…' : ui.job ? `${ui.job.name} · ${ui.file}` : 'no job'}</span></>} />
       <input ref={fileInput} type="file" accept=".dxf,.svg" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importFile(ui, f); e.target.value = ''; }} />
+      <input ref={pathsInput} type="file" accept=".json,.dxf" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importPathsFile(ui, f); e.target.value = ''; }} />
       <input ref={modelInput} type="file" accept=".stl,.obj" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) importModelFile(ui, f); e.target.value = ''; }} />
       <input ref={imageInput} type="file" accept="image/png,image/jpeg" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) ui.openModal({ kind: 'heightmap', file: f }); e.target.value = ''; }} />
       <div className="dock" onDragOver={e => e.preventDefault()} onDrop={async e => { const f = e.dataTransfer.files[0]; if (!f) return; e.preventDefault(); if (f.name.endsWith('.json')) { const j = JSON.parse(await f.text()); if (ui.job) ui.setJob(j); else ui.createJob(j); } else if (/\.(stl|obj)$/i.test(f.name)) importModelFile(ui, f); else importFile(ui, f); }}>

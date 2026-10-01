@@ -1,11 +1,11 @@
-import { uid, bbox, parseDxf, parseSvg, stockBounds, feedsAndSpeeds, parseStl, parseObj, placementFor, IDENTITY_PLACEMENT, proposeOperations, polylineFromParams, translateParams, scaleParams, union, difference, intersection, offsetPolygons, normalize, signedArea, newJob } from '@cool-cam/core';
-import type { Op, Shape, MaterialId, Tool, Model, ShapeParams, Polyline } from '@cool-cam/core';
+import { uid, bbox, parseDxf, parseDxf3D, parsePathsJson, parseSvg, stockBounds, feedsAndSpeeds, parseStl, parseObj, placementFor, IDENTITY_PLACEMENT, proposeOperations, polylineFromParams, translateParams, scaleParams, union, difference, intersection, offsetPolygons, normalize, signedArea, newJob } from '@cool-cam/core';
+import type { Op, Shape, MaterialId, Tool, Model, ShapeParams, Polyline, Path3D } from '@cool-cam/core';
 import type { Ui } from './ui';
 import { showPanel } from './layout';
 
 /** Shared, menu-callable actions so the menubar, panels and modals do the same thing. */
 
-export function opDefaultName(op: Op) { return op.type === 'profile' ? `Profile ${op.side}` : op.type === 'pocket' ? 'Pocket' : op.type === 'drill' ? 'Drill' : op.type === 'rough3d' ? '3D Rough' : op.type === 'finish3d' ? '3D Finish' : op.type === 'vcarve' ? 'V-carve' : 'Keyhole'; }
+export function opDefaultName(op: Op) { return op.type === 'profile' ? `Profile ${op.side}` : op.type === 'pocket' ? 'Pocket' : op.type === 'drill' ? 'Drill' : op.type === 'rough3d' ? '3D Rough' : op.type === 'trace' ? 'Trace paths' : op.type === 'finish3d' ? '3D Finish' : op.type === 'vcarve' ? 'V-carve' : 'Keyhole'; }
 
 export function addOperation(ui: Ui, type: Op['type']) {
   const job = ui.job; if (!job) return;
@@ -28,6 +28,14 @@ export function addOperation(ui: Ui, type: Op['type']) {
     if (!modelId) return;
     const ball = pool.find(t => t.type === 'ballnose') ?? tool;
     op = { ...base, type: 'finish3d', modelId, shapeIds: [], toolId: ball?.id ?? base.toolId, depth: job.stock.thickness, stepover: ball ? +(ball.diameter * 0.12).toFixed(2) : 0.5, axis: 'x', boundaryMode: 'silhouette', containment: 'inside' };
+  }
+  if (type === 'trace') {
+    const paths = job.paths ?? []; if (!paths.length) return;
+    // the generator's tool label hints at the cutter: B… = ball nose, F… = flat; otherwise the first ball nose for 3D work
+    const ballish = paths.some(p => /^b/i.test(p.tool ?? ''));
+    const pick = pool.find(t => ballish ? t.type === 'ballnose' : t.type === 'endmill') ?? tool;
+    const modelId = job.models?.[0]?.id;
+    op = { ...base, type: 'trace', toolId: pick?.id ?? base.toolId, shapeIds: [], pathIds: paths.map(p => p.id), mode: 'tip', modelId, depth: job.stock.thickness + (job.stock.spoilboard ?? 0), stockToLeave: 0, stepdown: pick ? +(pick.diameter * 0.5).toFixed(2) : 1 } as Op;
   }
   if (tool && job.material) { try { const f = feedsAndSpeeds(tool, job.material as MaterialId); Object.assign(op, { rpm: f.rpm, feed: f.feed, plunge: f.plunge, depthPerPass: Math.min(f.depthPerPass, op.depth) }); if (op.type === 'pocket') op.stepover = f.stepover; } catch { /* unknown material */ } }
   const chosen = pool.find(t => t.id === op.toolId);
@@ -52,6 +60,18 @@ export function deleteShapes(ui: Ui) {
   ui.setJob(j => ({ ...j, shapes: j.shapes.filter(s => !ids.includes(s.id)), ops: j.ops.map(o => ({ ...o, shapeIds: o.shapeIds.filter(id => !ids.includes(id)) })) })); ui.setSelectedShapes([]);
 }
 
+/** Import tool-tip paths (generator JSON or a DXF with 3D polylines) into the open project as `job.paths`. */
+export async function importPathsFile(ui: Ui, file: File) {
+  const job = ui.job; if (!job) return;
+  const text = await file.text(); const ext = file.name.split('.').pop()?.toLowerCase();
+  const base = file.name.replace(/\.[^.]+$/, '').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+  let paths: Path3D[];
+  try { paths = ext === 'json' ? parsePathsJson(text, { prefix: base }) : ext === 'dxf' ? parseDxf3D(text).map((p, i) => ({ id: `${base}_${i + 1}`, layer: p.layer, tool: p.layer?.match(/([FB]\d{2,3})/i)?.[1], points: p.points })) : []; }
+  catch (e) { ui.openModal({ kind: 'confirm', title: 'Could not import paths', message: (e as Error).message, onConfirm: () => {} }); return; }
+  if (!paths.length) return;
+  ui.setJob(j => { const ids = new Set((j.paths ?? []).map(p => p.id)); for (const p of paths) if (ids.has(p.id)) p.id = uid(base); return { ...j, paths: [...(j.paths ?? []), ...paths] }; });
+}
+
 export async function importFile(ui: Ui, file: File, placeAtCorner = true) {
   const text = await file.text(); const ext = file.name.split('.').pop()?.toLowerCase();
   let polys = ext === 'dxf' ? parseDxf(text) : ext === 'svg' ? parseSvg(text) : null;
@@ -59,7 +79,8 @@ export async function importFile(ui: Ui, file: File, placeAtCorner = true) {
   const job = ui.job; const b = job ? stockBounds(job.stock) : { x0: 0, y0: 0 };
   if (placeAtCorner) { const bb = bbox(polys); polys = polys.map(p => ({ closed: p.closed, points: p.points.map(q => ({ x: q.x - bb.minX + b.x0 + 5, y: q.y - bb.minY + b.y0 + 5 })) })); }
   const base = file.name.replace(/\.[^.]+$/, '').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
-  const shapes: Shape[] = polys.map((p, i) => ({ id: `${base}_${i + 1}`, name: `${base} ${i + 1}`, polyline: p }));
+  // DXF layers travel with the shapes; REF* / *REF layers are reference geometry and never machined
+  const shapes: Shape[] = polys.map((p, i) => { const layer = (p as Polyline & { layer?: string }).layer; return { id: `${base}_${i + 1}`, name: `${base} ${i + 1}`, polyline: { points: p.points, closed: p.closed }, layer, reference: layer ? /(^|_)REF(_|$)|REFERENCE/i.test(layer) || undefined : undefined }; });
   if (!job) { const bb = bbox(polys); const j = newJob(file.name.replace(/\.[^.]+$/, ''), { width: Math.ceil(bb.maxX + 5), length: Math.ceil(bb.maxY + 5) }); j.shapes = shapes; ui.createJob(j); }
   else ui.setJob(j => { const ids = new Set(j.shapes.map(s => s.id)); for (const s of shapes) if (ids.has(s.id)) s.id = uid(base); return { ...j, shapes: [...j.shapes, ...shapes] }; });
   ui.setSelectedShapes(shapes.map(s => s.id));

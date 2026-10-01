@@ -19,10 +19,11 @@ export function ModelsPanel() {
   const bb = m ? meshBBox(placedMesh(m)) : null;
   const warn: string[] = [];
   if (bb) {
-    if (bb.max[2] - bb.min[2] > job.stock.thickness + 1e-6) warn.push(`Model is ${r1(bb.max[2] - bb.min[2])} mm tall, stock is ${job.stock.thickness} mm.`);
+    const allowance = job.stock.spoilboard ?? 0;
+    if (bb.max[2] - bb.min[2] > job.stock.thickness + allowance + 1e-6) warn.push(`Model is ${r1(bb.max[2] - bb.min[2])} mm tall, stock is ${job.stock.thickness} mm${allowance ? ` plus a ${allowance} mm spoilboard allowance` : ''}.`);
     if (bb.min[0] < b.x0 - 1e-6 || bb.max[0] > b.x1 + 1e-6 || bb.min[1] < b.y0 - 1e-6 || bb.max[1] > b.y1 + 1e-6) warn.push('Model extends outside the stock.');
     if (bb.max[2] > b.top + 1e-6) warn.push('Model top is above the stock top.');
-    if (bb.min[2] < b.bottom - 1e-6) warn.push('Model bottom is below the stock bottom.');
+    if (bb.min[2] < b.floor - 1e-6) warn.push(allowance ? 'Model bottom is below the spoilboard allowance.' : 'Model bottom is below the stock bottom (set a spoilboard allowance in Job & Stock if that is intended).');
   }
   return (
     <div className="panel-body">

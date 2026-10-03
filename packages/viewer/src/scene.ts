@@ -478,12 +478,23 @@ export class SceneController {
     return { x: ((v.x + 1) / 2) * this.el.clientWidth, y: ((1 - v.y) / 2) * this.el.clientHeight };
   }
   get gizmoPosition() { return this.proxy.position.clone(); }
-  fit() {
+  /** Default camera direction (front-left, looking down at the stock); `home()` returns to it. */
+  private static readonly HOME_DIR = new THREE.Vector3(-0.5, -0.8, 0.6).normalize();
+  /**
+   * Home: the view a fresh job opens with. Unlike fit(), which keeps the current direction, this also resets the
+   * direction and the up vector, so a camera that was orbited, panned or zoomed out of sight comes straight back.
+   */
+  home() {
+    this.anim = null;
+    this.camera.up.set(0, 0, 1);
+    this.fit(SceneController.HOME_DIR);
+  }
+  fit(direction?: THREE.Vector3) {
     if (!this.job) return;
     const b = stockBounds(this.job.stock); const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2; const span = Math.max(this.job.stock.width, this.job.stock.length);
     this.controls.target.set(cx, cy, b.top);
-    const dir = new THREE.Vector3().subVectors(this.camera.position, this.controls.target).normalize();
-    if (dir.lengthSq() < 0.5) dir.set(-0.5, -0.8, 0.6).normalize();
+    const dir = direction ? direction.clone() : new THREE.Vector3().subVectors(this.camera.position, this.controls.target).normalize();
+    if (dir.lengthSq() < 0.5) dir.copy(SceneController.HOME_DIR);
     const dist = span * 1.6;
     this.camera.position.copy(this.controls.target).addScaledVector(dir, dist);
     if (this.camera === this.ortho) { const half = dist * Math.tan((FOV * Math.PI) / 360); const aspect = (this.el.clientWidth || 1) / (this.el.clientHeight || 1); this.ortho.top = half; this.ortho.bottom = -half; this.ortho.left = -half * aspect; this.ortho.right = half * aspect; this.ortho.zoom = 1; this.ortho.updateProjectionMatrix(); }

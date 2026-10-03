@@ -58,6 +58,7 @@ function Shell() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) ui.redo(); else ui.undo(); return; }
       if (e.code === 'Space' || e.key === ' ') { e.preventDefault(); ui.setViewCube(v => !v); }
       else if (e.key === 'Escape') { ui.setViewCube(false); ui.setTabEdit(false); }
+      else if (e.key.toLowerCase() === 'h' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); ui.sceneRef.current?.home(); } // home the viewport after orbiting or zooming away
     };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }, [ui]);
@@ -111,6 +112,7 @@ function Shell() {
     ] },
     { label: 'View', items: [
       { label: 'View cube', shortcut: 'Space', checked: ui.viewCube, onClick: () => ui.setViewCube(v => !v) },
+      { label: 'Home view', shortcut: 'H', onClick: () => scene()?.home() },
       { label: 'Fit to stock', onClick: () => scene()?.fit() },
       { label: 'Orthographic', checked: ui.ortho, onClick: () => scene()?.setProjection(ui.ortho ? 'persp' : 'ortho') },
       'sep',

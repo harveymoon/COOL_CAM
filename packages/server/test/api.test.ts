@@ -61,6 +61,29 @@ describe('local API server', () => {
     expect(fs.existsSync(path.join(dataDir, 'machines.json'))).toBe(true);
     expect((await fetch(url + 'api/machines', { method: 'PUT', body: '{}' })).status).toBe(400);
   });
+  it('keeps multi-byte text intact across body chunks and refuses oversized bodies', async () => {
+    const { url } = await started;
+    // well past one socket chunk, so UTF-8 sequences straddle chunk boundaries somewhere
+    const name = 'Übung – 日本語 – ñ – 🙂 '.repeat(20000);
+    const put = await fetch(url + 'api/jobs/unicode.json', { method: 'PUT', body: JSON.stringify({ name, ops: [] }) });
+    expect((await put.json()).ok).toBe(true);
+    expect((await (await fetch(url + 'api/jobs/unicode.json')).json()).name).toBe(name);
+    expect(fs.readdirSync(jobsDir).filter(f => f.endsWith('.tmp'))).toEqual([]);
+    const big = new Uint8Array(3_000_000);
+    const r = await fetch(url + 'api/jobs/unicode.jpg', { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: big }).catch(() => null);
+    if (r) expect(r.status).toBe(413); // the server may also drop the socket while the client is still sending
+    expect(fs.existsSync(path.join(jobsDir, 'unicode.jpg'))).toBe(false);
+    await fetch(url + 'api/jobs/unicode.json', { method: 'DELETE' });
+  });
+  it('reports a corrupt tool library instead of serving it as empty', async () => {
+    const { url } = await started;
+    const file = path.join(dataDir, 'tools.json'); const good = fs.readFileSync(file, 'utf8');
+    fs.writeFileSync(file, '[{"id": "torn');
+    const r = await fetch(url + 'api/tools');
+    expect(r.status).toBe(500); expect(await r.text()).toMatch(/not valid JSON/);
+    expect(fs.readFileSync(file, 'utf8')).toBe('[{"id": "torn');
+    fs.writeFileSync(file, good);
+  });
   it('lists platform font folders', () => {
     expect(defaultFontDirs(['/extra']).at(-1)).toBe('/extra');
     expect(defaultFontDirs().length).toBeGreaterThan(1);

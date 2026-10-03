@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveToolLibrary, readToolLibrary, writeToolLibrary, type LibraryLocation } from '@cool-cam/core/node';
+import { resolveToolLibrary, readToolLibrary, writeToolLibrary, writeFileAtomic, type LibraryLocation } from '@cool-cam/core/node';
 
 export interface ApiOptions {
   /** Folder holding <slug>.json jobs and current.json. Created if missing. */
@@ -63,8 +63,19 @@ function listFonts(dirs: string[]): { name: string; file: string }[] {
 }
 
 const json = (res: http.ServerResponse, v: unknown, status = 200) => { res.statusCode = status; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(v)); };
-const readBody = (req: http.IncomingMessage) => new Promise<string>((resolve, reject) => { let b = ''; req.on('data', (c: Buffer) => { b += c; }); req.on('end', () => resolve(b)); req.on('error', reject); });
-const readBytes = (req: http.IncomingMessage) => new Promise<Buffer>((resolve, reject) => { const parts: Buffer[] = []; req.on('data', (c: Buffer) => parts.push(c)); req.on('end', () => resolve(Buffer.concat(parts))); req.on('error', reject); });
+/** Jobs can embed meshes, so the JSON limit is generous; it only has to stop a runaway client from exhausting memory. */
+const MAX_JSON_BODY = 256 * 1024 * 1024;
+const MAX_IMAGE_BODY = 2_000_000;
+class BodyTooLarge extends Error { status = 413; }
+/** Collect the body as bytes (never as concatenated strings: a multi-byte character split across chunks would be mangled). */
+const readBytes = (req: http.IncomingMessage, limit: number) => new Promise<Buffer>((resolve, reject) => {
+  const parts: Buffer[] = []; let n = 0;
+  req.on('data', (c: Buffer) => { n += c.length; if (n > limit) { reject(new BodyTooLarge(`request body exceeds ${Math.round(limit / 1e6)} MB`)); req.destroy(); return; } parts.push(c); });
+  req.on('end', () => resolve(Buffer.concat(parts))); req.on('error', reject);
+});
+const readBody = (req: http.IncomingMessage, limit = MAX_JSON_BODY) => readBytes(req, limit).then(b => b.toString('utf8'));
+/** Error reply for the async handlers: an aborted or oversized request must never become an unhandled rejection in the host process. */
+const fail = (res: http.ServerResponse, e: unknown) => { if (res.headersSent) return; res.statusCode = e instanceof BodyTooLarge ? e.status : 500; res.end(String((e as Error).message ?? e)); };
 
 /** What the landing page shows per project without loading the whole (possibly multi-MB) job. */
 export interface JobListEntry { name: string; mtime: number; thumb: string | null; summary: { name: string; material?: string; stock?: { width: number; length: number; thickness: number }; ops: number; shapes: number; models: number; savedAt?: string } | null }
@@ -94,6 +105,7 @@ export function createApi(opts: ApiOptions): Api {
   let watcher: fs.FSWatcher | null = null;
   try {
     watcher = fs.watch(jobsDir, { persistent: false }, (_ev, file) => {
+      if (file && String(file).endsWith('.tmp')) return; // atomic writes land as <file>.<pid>.<rand>.tmp then a rename
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => { const f = file ? String(file) : null; for (const cb of listeners) cb(f); for (const c of clients) c.write(`event: jobs-changed\ndata: ${JSON.stringify({ file: f })}\n\n`); }, 150);
     });
@@ -131,19 +143,20 @@ export function createApi(opts: ApiOptions): Api {
       if (route.startsWith('/api/snapshot/')) {
         const id = route.slice('/api/snapshot/'.length); const p = pendingShots.get(id);
         if (!p) { json(res, { error: 'unknown or expired snapshot request' }, 404); return true; }
-        if (req.method === 'POST' || req.method === 'PUT') { readBytes(req).then(buf => { if (buf.length < 100) p.reject(new Error('The viewer sent an empty image (is a project open?).')); else p.resolve(buf); json(res, { ok: true }); }).catch(e => { p.reject(e as Error); json(res, { error: (e as Error).message }, 500); }); return true; }
+        if (req.method === 'POST' || req.method === 'PUT') { readBytes(req, 8 * MAX_IMAGE_BODY).then(buf => { if (buf.length < 100) p.reject(new Error('The viewer sent an empty image (is a project open?).')); else p.resolve(buf); json(res, { ok: true }); }).catch(e => { p.reject(e as Error); fail(res, e); }); return true; }
         json(res, { error: 'POST the JPEG' }, 405); return true;
       }
       if (route === '/api/machines') {
         // the user's own machine profiles, next to the tool library; presets ship in core
         const file = path.join(library.userDir, 'machines.json');
-        if (req.method === 'PUT') { readBody(req).then(body => { try { const m = JSON.parse(body); if (!Array.isArray(m)) throw new Error('machines must be an array'); writeToolLibrary(file, m); json(res, { ok: true }); } catch (e) { json(res, { error: (e as Error).message }, 400); } }); return true; }
+        if (req.method === 'PUT') { readBody(req, 16_000_000).then(body => { try { const m = JSON.parse(body); if (!Array.isArray(m)) throw new Error('machines must be an array'); writeToolLibrary(file, m); json(res, { ok: true }); } catch (e) { json(res, { error: (e as Error).message }, 400); } }).catch(e => fail(res, e)); return true; }
         json(res, readToolLibrary(file)); return true;
       }
       if (route === '/api/tools/info') { json(res, { file: library.file, source: library.source, userDir: library.userDir, bundled: library.bundled }); return true; }
       if (route === '/api/tools/defaults') { json(res, library.bundled ? readToolLibrary(library.bundled) : []); return true; }
       if (route === '/api/tools') {
-        if (req.method === 'PUT') { readBody(req).then(body => { try { const t = JSON.parse(body); if (!Array.isArray(t)) throw new Error('library must be an array'); writeToolLibrary(library.file, t); json(res, { ok: true }); } catch (e) { res.statusCode = 400; res.end(String((e as Error).message)); } }); return true; }
+        if (req.method === 'PUT') { readBody(req, 16_000_000).then(body => { try { const t = JSON.parse(body); if (!Array.isArray(t)) throw new Error('library must be an array'); writeToolLibrary(library.file, t); json(res, { ok: true }); } catch (e) { res.statusCode = 400; res.end(String((e as Error).message)); } }).catch(e => fail(res, e)); return true; }
+        // a corrupt library file is reported (500 with the reason), never served as an empty library the viewer would then save back
         json(res, readToolLibrary(library.file)); return true;
       }
       if (route === '/api/jobs' || route === '/api/jobs/') {
@@ -164,7 +177,7 @@ export function createApi(opts: ApiOptions): Api {
         }
         if (req.method === 'PUT' && base.endsWith('.jpg')) {
           // project thumbnail, raw JPEG bytes from the viewer's canvas
-          readBytes(req).then(buf => { if (buf.length > 2_000_000) { res.statusCode = 413; res.end('thumbnail too large'); return; } fs.writeFileSync(file, buf); json(res, { ok: true, file: base }); }).catch(e => { res.statusCode = 500; res.end(String(e)); });
+          readBytes(req, MAX_IMAGE_BODY).then(buf => { writeFileAtomic(file, buf); json(res, { ok: true, file: base }); }).catch(e => fail(res, e));
           return true;
         }
         if (req.method === 'PUT') {
@@ -172,11 +185,11 @@ export function createApi(opts: ApiOptions): Api {
           readBody(req).then(body => {
             try {
               const job = JSON.parse(body); const payload = JSON.stringify(job, null, 1);
-              fs.writeFileSync(file, payload);
-              if (base !== 'current.json') fs.writeFileSync(path.join(jobsDir, 'current.json'), payload);
+              writeFileAtomic(file, payload);
+              if (base !== 'current.json') writeFileAtomic(path.join(jobsDir, 'current.json'), payload);
               json(res, { ok: true, file: base });
             } catch (e) { res.statusCode = 400; res.end(String((e as Error).message)); }
-          });
+          }).catch(e => fail(res, e));
           return true;
         }
         if (!fs.existsSync(file)) { res.statusCode = 404; res.end('not found'); return true; }

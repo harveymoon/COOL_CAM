@@ -21,7 +21,13 @@ export interface ProjectEntry { name: string; mtime: number; thumb: string | nul
 
 export type JobUpdater = (job: Job) => Job;
 
-export const slugOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'job';
+/** Project file stem for a name; mirrors `projectFileName` in the MCP server (both must agree). A name with nothing slug-able in it (another script) gets a short hash rather than colliding on "job". */
+export const slugOf = (name: string) => {
+  const s = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  if (s) return s;
+  let h = 5381; for (const c of name) h = (Math.imul(h, 33) ^ (c.codePointAt(0) ?? 0)) >>> 0;
+  return `job-${h.toString(36)}`;
+};
 
 /**
  * Project store. Nothing is loaded on boot: the landing page lists the projects in the jobs folder and the user opens one
@@ -55,7 +61,8 @@ export function useJobStore() {
       if (!r.ok) throw new Error(`${f}: ${r.status}`);
       const raw = await r.json();
       if (raw._rev && raw._rev === rev.current) return true; // our own save echoing back
-      delete raw._rev; delete raw._savedAt;
+      rev.current = typeof raw._rev === 'string' ? raw._rev : ''; // the revision our next save is based on
+      delete raw._rev; delete raw._savedAt; delete raw._file; delete raw._baseRev;
       setJobState(raw as Job); setError(null); dirty.current = false; past.current = []; future.current = []; setHistTick(t => t + 1);
       return true;
     } catch (e) { setError((e as Error).message); return false; }
@@ -91,7 +98,7 @@ export function useJobStore() {
         try {
           const r = await fetch(`/api/jobs/current.json?t=${Date.now()}`); if (!r.ok) return; const cur = await r.json();
           if (cur._rev && cur._rev === rev.current) return;
-          const curFile = `${slugOf(cur.name ?? '')}.json`;
+          const curFile = typeof cur._file === 'string' ? cur._file : `${slugOf(cur.name ?? '')}.json`;
           if (open && curFile === open) { load(open); return; }
           if (!open || curFile !== open) setMcpSwitched({ file: curFile, name: cur.name ?? curFile });
         } catch { /* ignore */ }
@@ -100,18 +107,55 @@ export function useJobStore() {
     return () => es?.close();
   }, [load, refreshList]);
 
-  const persist = useCallback((j: Job, target: string) => {
-    if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(async () => {
-      const r = Math.random().toString(36).slice(2);
-      rev.current = r; setSaving(true);
-      try {
-        await fetch(`/api/jobs/${encodeURIComponent(target)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...j, _rev: r, _savedAt: new Date().toISOString() }) });
-        dirty.current = false; refreshList();
-      } catch (e) { setError(`save failed: ${(e as Error).message}`); }
-      finally { setSaving(false); }
-    }, 300);
+  /** The save waiting for the debounce (one at a time; a different target flushes the previous one first). */
+  const pending = useRef<{ job: Job; target: string; timer: number } | null>(null);
+  /** Saves run one after another: each PUT names the revision it is based on, so two in flight would refuse each other. */
+  const chain = useRef<Promise<void>>(Promise.resolve());
+  const busy = useRef(false);
+  const doSave = useCallback(async (j: Job, target: string) => {
+    const base = rev.current; const r = Math.random().toString(36).slice(2);
+    rev.current = r; busy.current = true; setSaving(true);
+    try {
+      const res = await fetch(`/api/jobs/${encodeURIComponent(target)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...j, _rev: r, _baseRev: base || undefined, _savedAt: new Date().toISOString() }) });
+      if (res.status === 409) {
+        // the MCP server saved this file while we were editing: take its version rather than overwrite it, keep ours in Undo
+        const body = await res.json().catch(() => null); const theirs = body?.job;
+        if (theirs && typeof theirs === 'object' && fileRef.current === target) {
+          rev.current = typeof theirs._rev === 'string' ? theirs._rev : '';
+          delete theirs._rev; delete theirs._savedAt; delete theirs._file; delete theirs._baseRev;
+          past.current.push(j); if (past.current.length > 60) past.current.shift(); future.current = [];
+          setJobState(theirs as Job); setHistTick(t => t + 1);
+          setError(`${target} was changed by the MCP server while you were editing: its version is shown. Undo brings yours back (saving that again replaces theirs).`);
+        } else setError(`save refused: ${body?.message ?? 'the project was changed elsewhere'}`);
+        dirty.current = false; return;
+      }
+      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+      dirty.current = false; refreshList();
+    } catch (e) { setError(`save failed: ${(e as Error).message}`); }
+    finally { busy.current = false; setSaving(false); }
   }, [refreshList]);
+  const enqueue = useCallback((j: Job, target: string) => { const p = chain.current.then(() => doSave(j, target)); chain.current = p.catch(() => {}); return p; }, [doSave]);
+  /** Send any pending save now and wait for every save in flight (window close, Save As). */
+  const flush = useCallback(async () => {
+    const p = pending.current;
+    if (p) { window.clearTimeout(p.timer); pending.current = null; enqueue(p.job, p.target); }
+    await chain.current;
+  }, [enqueue]);
+  const persist = useCallback((j: Job, target: string) => {
+    const p = pending.current;
+    if (p) { window.clearTimeout(p.timer); pending.current = null; if (p.target !== target) enqueue(p.job, p.target); } // another file's pending save is sent, not dropped
+    pending.current = { job: j, target, timer: window.setTimeout(() => { pending.current = null; enqueue(j, target); }, 300) };
+  }, [enqueue]);
+  // a pending save must not die with the window: browsers get the leave-page prompt while the save is sent; Electron asks
+  // the renderer to flush before the window closes (desktop main handles `close`)
+  useEffect(() => {
+    const onUnload = (e: BeforeUnloadEvent) => { if (!pending.current && !busy.current) return; flush(); if (!window.coolcam) { e.preventDefault(); e.returnValue = ''; } };
+    window.addEventListener('beforeunload', onUnload);
+    const off = window.coolcam?.onFlush?.(async () => { await flush(); window.coolcam?.flushed?.(); });
+    return () => { window.removeEventListener('beforeunload', onUnload); off?.(); };
+  }, [flush]);
+  /** Does a project file exist (by the server's current listing)? */
+  const exists = useCallback(async (f: string) => { try { const list: ProjectEntry[] = await (await fetch('/api/jobs')).json(); setFiles(list); return list.some(e => e.name === f); } catch { return false; } }, []);
 
   const setJob = useCallback((up: JobUpdater | Job) => {
     const target = fileRef.current; if (!target) return; // nothing open: edits are ignored (the landing page is showing)
@@ -127,16 +171,24 @@ export function useJobStore() {
   const undo = useCallback(() => { const target = fileRef.current; if (!target) return; setJobState(cur => { const prev = past.current.pop(); if (!prev) return cur; if (cur) future.current.push(cur); dirty.current = true; persist(prev, target); return prev; }); setHistTick(t => t + 1); }, [persist]);
   const redo = useCallback(() => { const target = fileRef.current; if (!target) return; setJobState(cur => { const nxt = future.current.pop(); if (!nxt) return cur; if (cur) past.current.push(cur); dirty.current = true; persist(nxt, target); return nxt; }); setHistTick(t => t + 1); }, [persist]);
 
-  /** Create a named project: becomes the open file and is saved immediately. */
-  const createJob = useCallback((j: Job) => {
+  /** Create a named project: becomes the open file and is saved immediately. Refuses to replace an existing project file. */
+  const createJob = useCallback(async (j: Job): Promise<boolean> => {
     const f = `${slugOf(j.name)}.json`;
-    setFileState(f); fileRef.current = f; setMcpSwitched(null);
+    if (await exists(f)) { setError(`A project file ${f} already exists. Open it from the project list, or choose another name.`); return false; }
+    await flush();
+    setFileState(f); fileRef.current = f; setMcpSwitched(null); rev.current = '';
     setJobState(j); past.current = []; future.current = []; dirty.current = true; persist(j, f); setHistTick(t => t + 1);
-  }, [persist]);
-  /** Save the current project under a new name (new file in jobs/); the old file is left as it was. */
-  const saveAs = useCallback((name: string) => {
-    setJobState(prev => { if (!prev) return prev; const next = { ...prev, name }; const f = `${slugOf(name)}.json`; setFileState(f); fileRef.current = f; persist(next, f); return next; });
-  }, [persist]);
+    return true;
+  }, [persist, flush, exists]);
+  /** Save the current project under a new name (new file in jobs/); the old file keeps its pending edits and is otherwise left as it was. */
+  const saveAs = useCallback(async (name: string): Promise<boolean> => {
+    const f = `${slugOf(name)}.json`;
+    if (f !== fileRef.current && await exists(f)) { setError(`A project file ${f} already exists; choose another name.`); return false; }
+    await flush();
+    if (f !== fileRef.current) rev.current = ''; // a new file: the save is not based on any revision of it
+    setJobState(prev => { if (!prev) return prev; const next = { ...prev, name }; setFileState(f); fileRef.current = f; persist(next, f); return next; });
+    return true;
+  }, [persist, flush, exists]);
 
   /** Store a thumbnail (JPEG data URL from the viewport) next to the open project file. */
   const saveThumbnail = useCallback(async (dataUrl: string) => {
@@ -177,7 +229,7 @@ export function useJobStore() {
   useEffect(() => () => genWorker.current?.terminate(), []);
 
   return {
-    files, file, job, setJob, createJob, saveAs, openProject, closeProject, deleteProject, saveThumbnail, refreshList, mcpSwitched, dismissMcpSwitched: () => setMcpSwitched(null),
+    files, file, job, setJob, createJob, saveAs, flush, openProject, closeProject, deleteProject, saveThumbnail, refreshList, mcpSwitched, dismissMcpSwitched: () => setMcpSwitched(null),
     derived, generating, stale: job !== null && derivedJob !== job, error, saving, reload: () => { if (file) { dirty.current = false; load(file); } },
     undo, redo, canUndo: past.current.length > 0, canRedo: future.current.length > 0, histTick,
   };

@@ -81,6 +81,18 @@ async function boot() {
     webPreferences: { preload: path.join(__dirname, '../preload/index.mjs'), contextIsolation: true, sandbox: false },
   });
   win.on('closed', () => { win = null; });
+  // Let the renderer send a pending autosave before the window goes away (the viewer's store answers 'flushed'); a
+  // renderer that does not answer within 3 s does not hold the window hostage.
+  let flushed = false;
+  win.on('close', e => {
+    if (flushed || !win) return;
+    e.preventDefault(); flushed = true;
+    const w = win;
+    const done = () => { ipcMain.removeListener('flushed', done); clearTimeout(t); try { w.destroy(); } catch { /* already gone */ } if (quitting) app.quit(); };
+    const t = setTimeout(done, 3000);
+    ipcMain.once('flushed', done);
+    w.webContents.send('flush');
+  });
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('did-fail-load', (_e, code, desc, url, isMainFrame) => { if (isMainFrame) console.error(`[cool-cam] window failed to load ${url}: ${desc} (${code})`); });
   win.webContents.on('console-message', (_e, level, message) => { if (level >= 2) console.error(`[cool-cam] renderer: ${message}`); });
@@ -146,5 +158,6 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
-// keep the jobs folder discoverable for support
-app.on('before-quit', () => { try { fs.mkdirSync(jobsDir, { recursive: true }); } catch { /* ignore */ } });
+// a quit closes the window first; the close handler above defers it for the flush and resumes the quit afterwards
+let quitting = false;
+app.on('before-quit', () => { quitting = true; try { fs.mkdirSync(jobsDir, { recursive: true }); } catch { /* keep the jobs folder discoverable for support */ } });

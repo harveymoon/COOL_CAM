@@ -3,7 +3,7 @@ import { MATERIALS, newJob } from '@cool-cam/core';
 import type { MaterialId } from '@cool-cam/core';
 import { useUi } from './ui';
 import { Num, Sel, Text } from './Fields';
-import type { ProjectEntry } from './store';
+import { slugOf, type ProjectEntry } from './store';
 
 const fmtWhen = (ms: number) => { const d = new Date(ms); const days = (Date.now() - ms) / 86400000; return days < 1 ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : days < 7 ? d.toLocaleDateString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString(); };
 
@@ -27,13 +27,14 @@ export function Landing({ asPage }: { asPage: boolean }) {
   const thumbUrl = (p: ProjectEntry) => p.thumb ? `/api/jobs/${encodeURIComponent(p.thumb)}?t=${Math.round(p.mtime)}` : null;
 
   const open = async (f: string) => { await ui.openProject(f); if (!asPage) ui.closeModal(); };
-  const create = () => {
+  const create = async () => {
     const name = newName.trim(); if (!name) return;
     const j = newJob(name, { width: stock.w ?? 200, length: stock.l ?? 200, thickness: stock.t ?? 18 });
     j.tools = ui.library.map(t => ({ ...t })); if (newMaterial) j.material = newMaterial;
-    ui.createJob(j); if (!asPage) ui.closeModal();
+    if (await ui.createJob(j) && !asPage) ui.closeModal();
   };
-  const nameTaken = projects.some(p => p.summary?.name === newName.trim());
+  // projects are identified by their file, which comes from the name: "My Job" and "my job" would be the same file
+  const nameTaken = !!newName.trim() && projects.some(p => p.name === `${slugOf(newName.trim())}.json`);
 
   return (
     <div className={`landing${asPage ? ' page' : ''}`}>

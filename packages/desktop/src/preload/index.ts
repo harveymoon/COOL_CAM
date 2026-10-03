@@ -13,4 +13,11 @@ contextBridge.exposeInMainWorld('coolcam', {
     ipcRenderer.on('menu:click', handler);
     return () => ipcRenderer.removeListener('menu:click', handler);
   },
+  // the window is closing: the renderer flushes its pending autosave and answers, main then lets the close through
+  onFlush: (cb: () => void | Promise<void>) => {
+    const handler = () => { void cb(); };
+    ipcRenderer.on('flush', handler);
+    return () => ipcRenderer.removeListener('flush', handler);
+  },
+  flushed: () => ipcRenderer.send('flushed'),
 });

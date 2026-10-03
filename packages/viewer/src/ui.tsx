@@ -20,7 +20,9 @@ export type ModalState =
 
 export interface Ui {
   files: ProjectEntry[]; file: string | null;
-  job: Job | null; setJob: (u: JobUpdater | Job) => void; createJob: (j: Job) => void; saveAs: (name: string) => void; reload: () => void;
+  job: Job | null; setJob: (u: JobUpdater | Job) => void; createJob: (j: Job) => Promise<boolean>; saveAs: (name: string) => Promise<boolean>; reload: () => void;
+  /** Send any pending autosave now and wait for it. */
+  flush: () => Promise<void>;
   openProject: (f: string) => Promise<void>; closeProject: () => void; deleteProject: (f: string) => Promise<void>; saveThumbnail: (dataUrl: string) => Promise<void>; refreshList: () => Promise<void>;
   /** The MCP server switched to another job; the UI offers to open it. */
   mcpSwitched: { file: string; name: string } | null; dismissMcpSwitched: () => void;
@@ -125,10 +127,10 @@ export function UiProvider({ children }: { children: ReactNode }) {
   }, []);
   const setActiveOpAndMode = useCallback((id: string | null) => { setActiveOp(id); if (id) setParamsMode('op'); }, []);
 
-  const createJob = useCallback((j: Job) => { if (!j.tools?.length) j.tools = library.map(t => ({ ...t })); store.createJob(j); setSelectedShapes([]); setActiveOp(null); }, [library, store]);
+  const createJob = useCallback(async (j: Job) => { if (!j.tools?.length) j.tools = library.map(t => ({ ...t })); const ok = await store.createJob(j); if (ok) { setSelectedShapes([]); setActiveOp(null); } return ok; }, [library, store]);
 
   const value: Ui = useMemo(() => ({
-    files: store.files, file: store.file, job: store.job, setJob: store.setJob, createJob, saveAs: store.saveAs, reload: store.reload,
+    files: store.files, file: store.file, job: store.job, setJob: store.setJob, createJob, saveAs: store.saveAs, flush: store.flush, reload: store.reload,
     openProject: store.openProject, closeProject: store.closeProject, deleteProject: store.deleteProject, saveThumbnail: store.saveThumbnail, refreshList: store.refreshList, mcpSwitched: store.mcpSwitched, dismissMcpSwitched: store.dismissMcpSwitched,
     derived: store.derived, generating: store.generating, stale: store.stale, error: store.error, saving: store.saving, undo: store.undo, redo: store.redo, canUndo: store.canUndo, canRedo: store.canRedo, paramsMode, setParamsMode,
     selectedShapes, setSelectedShapes, pickShape, activeOp, setActiveOp: setActiveOpAndMode, selectedModel, setSelectedModel,

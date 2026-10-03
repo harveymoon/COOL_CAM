@@ -16,6 +16,9 @@ declare global {
       platform: string;
       setMenu(menus: MenuSpec[]): void;
       onMenuClick(cb: (id: string) => void): () => void;
+      /** The window is about to close: save what is pending, then call `flushed()`. */
+      onFlush?(cb: () => void | Promise<void>): () => void;
+      flushed?(): void;
     };
   }
 }

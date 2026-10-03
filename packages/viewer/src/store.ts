@@ -148,13 +148,16 @@ export function useJobStore() {
   // terminates that worker (cancellation) and starts a fresh one after a short debounce, so typing in a field costs one
   // generation, not one per keystroke. The previous result stays on screen until the new one arrives.
   const [derived, setDerived] = useState<Derived | null>(null);
+  // the job the shown toolpaths were generated from: while an edit is debounced, generating, or failed to generate, the
+  // toolpaths (and their G-code and simulation) describe an older job and must not be exported as if they were current
+  const [derivedJob, setDerivedJob] = useState<Job | null>(null);
   const [generating, setGenerating] = useState(false);
   const genWorker = useRef<Worker | null>(null);
   const genId = useRef(0);
   const genTimer = useRef<number | null>(null);
   useEffect(() => {
     if (genTimer.current) window.clearTimeout(genTimer.current);
-    if (!job) { setDerived(null); setGenerating(false); genWorker.current?.terminate(); genWorker.current = null; return; }
+    if (!job) { setDerived(null); setDerivedJob(null); setGenerating(false); genWorker.current?.terminate(); genWorker.current = null; return; }
     genTimer.current = window.setTimeout(() => {
       genWorker.current?.terminate();
       const w = new Worker(new URL('./gen.worker.ts', import.meta.url), { type: 'module' });
@@ -162,7 +165,7 @@ export function useJobStore() {
       const id = ++genId.current; setGenerating(true);
       w.onmessage = (ev: MessageEvent<GenResponse>) => {
         const msg = ev.data; if (msg.id !== id) return;
-        if (msg.type === 'done') { const { type: _t, id: _i, ...rest } = msg; void _t; void _i; setDerived(rest); setError(null); }
+        if (msg.type === 'done') { const { type: _t, id: _i, ...rest } = msg; void _t; void _i; setDerived(rest); setDerivedJob(job); setError(null); }
         else setError(`generation failed: ${msg.message}`);
         setGenerating(false);
       };
@@ -175,7 +178,7 @@ export function useJobStore() {
 
   return {
     files, file, job, setJob, createJob, saveAs, openProject, closeProject, deleteProject, saveThumbnail, refreshList, mcpSwitched, dismissMcpSwitched: () => setMcpSwitched(null),
-    derived, generating, error, saving, reload: () => { if (file) { dirty.current = false; load(file); } },
+    derived, generating, stale: job !== null && derivedJob !== job, error, saving, reload: () => { if (file) { dirty.current = false; load(file); } },
     undo, redo, canUndo: past.current.length > 0, canRedo: future.current.length > 0, histTick,
   };
 }

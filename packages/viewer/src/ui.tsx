@@ -27,6 +27,8 @@ export interface Ui {
   derived: Derived | null; error: string | null; saving: boolean;
   /** True while toolpaths are being regenerated on the worker (the shown toolpaths are the previous result). */
   generating: boolean;
+  /** True when the shown toolpaths were generated from an older job than the one being edited (debounce, generating, or failed). */
+  stale: boolean;
   undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean;
   /** What the Parameters panel shows: the active operation or the selected shapes. */
   paramsMode: 'op' | 'shape'; setParamsMode: (m: 'op' | 'shape') => void;
@@ -128,7 +130,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const value: Ui = useMemo(() => ({
     files: store.files, file: store.file, job: store.job, setJob: store.setJob, createJob, saveAs: store.saveAs, reload: store.reload,
     openProject: store.openProject, closeProject: store.closeProject, deleteProject: store.deleteProject, saveThumbnail: store.saveThumbnail, refreshList: store.refreshList, mcpSwitched: store.mcpSwitched, dismissMcpSwitched: store.dismissMcpSwitched,
-    derived: store.derived, generating: store.generating, error: store.error, saving: store.saving, undo: store.undo, redo: store.redo, canUndo: store.canUndo, canRedo: store.canRedo, paramsMode, setParamsMode,
+    derived: store.derived, generating: store.generating, stale: store.stale, error: store.error, saving: store.saving, undo: store.undo, redo: store.redo, canUndo: store.canUndo, canRedo: store.canRedo, paramsMode, setParamsMode,
     selectedShapes, setSelectedShapes, pickShape, activeOp, setActiveOp: setActiveOpAndMode, selectedModel, setSelectedModel,
     ...simState,
     showPaths, setShowPaths, showStock, setShowStock, showModels, setShowModels, showShapes, setShowShapes, xray, setXray, viewCube, setViewCube, ortho, setOrtho, sceneRef, sceneReady, setSceneReady, dockRef, tabEdit, setTabEdit,

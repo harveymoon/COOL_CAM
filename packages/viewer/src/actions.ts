@@ -90,9 +90,13 @@ export async function importFile(ui: Ui, file: File, placeAtCorner = true) {
 const timeStamp = () => { const d = new Date(); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; };
 
 export function downloadGcode(ui: Ui, force = false) {
-  const job = ui.job, g = ui.derived?.gcode; if (!job || !g) return;
+  const job = ui.job, derived = ui.derived, g = derived?.gcode; if (!job || !derived || !g) return;
   const errors = ui.sim?.summary.events.filter(e => e.severity === 'error') ?? [];
-  if (ui.simBusy && !force) { ui.openModal({ kind: 'confirm', title: 'Simulation still running', message: 'The simulation has not finished checking this job. Download the G-code anyway?', onConfirm: () => downloadGcode(ui, true) }); return; }
+  const confirm = (title: string, message: string) => ui.openModal({ kind: 'confirm', title, message, onConfirm: () => downloadGcode(ui, true) });
+  // every guard below is about the G-code not being the one the simulation checked, or not being checked at all
+  if ((ui.generating || ui.stale) && !force) { confirm('Toolpaths are out of date', 'The job was edited after these toolpaths were generated (or the generation failed), so this G-code does not include the latest changes. Download the previous G-code anyway?'); return; }
+  if (ui.simBusy && !force) { confirm('Simulation still running', 'The simulation has not finished checking this job. Download the G-code anyway?'); return; }
+  if (!ui.sim && derived.toolpaths.some(t => t.moves.length) && !force) { confirm('Not simulated', 'The simulation did not run for this job (it may have failed), so nothing has checked these toolpaths for collisions or over-deep cuts. Download anyway?'); return; }
   if (errors.length && !force) {
     ui.openModal({ kind: 'confirm', title: `Simulation reports ${errors.length} problem(s)`, message: `${errors.slice(0, 5).map(e => e.message).join(' ')}${errors.length > 5 ? ' …' : ''} These moves can break a cutter. Download anyway?`, onConfirm: () => downloadGcode(ui, true) });
     return;

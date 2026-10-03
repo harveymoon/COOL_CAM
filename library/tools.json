@@ -198,15 +198,15 @@
  {
   "id": "v90",
   "number": 301,
-  "name": "90° V-bit 1/4\" shank",
+  "name": "BINSTAK 90° V-groove 1/2\"",
   "type": "vbit",
   "diameter": 12.7,
   "flutes": 2,
   "tipAngle": 90,
   "rpm": 18000,
   "feed": 1000,
-  "plunge": 400,
-  "sku": "S1/4-V90",
-  "notes": "Carbide-tipped 90° V, 1/4\" shank. Cutting diameter estimated at 1/2\" from the photo: measure and correct before relying on the flat-clearing width."
+  "plunge": 300,
+  "sku": "BINSTAK 90 deg V groove 1/2 in (S1/4-V90)",
+  "notes": "Carbide-tipped 90° V, 1/4\" shank, marked S1/4-V90. The crystal A package calls it V90 (labels 0.3 deep). 1/2\" cutting diameter per the listing; measure before relying on the flat-clearing width."
  }
 ]

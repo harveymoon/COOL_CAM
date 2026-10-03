@@ -99,17 +99,21 @@ export function prepareProfileLoops(job: Job, op: ProfileOp): PreparedLoop[] {
   const tabs = activeTabs(op);
   // Orientation: outers CCW (positive area) / holes CW after Clipper. For climb with CW spindle:
   //   material on the right of travel. Outside cut of an outer loop → CW; inside cut (or hole) → CCW.
-  const loops = profileLoops(job, op).map(l => {
+  const oriented = profileLoops(job, op).map(l => {
     const isOuter = signedArea(l) > 0;
     let ccw: boolean;
     if (op.side === 'outside') ccw = isOuter ? !climb : climb;
     else if (op.side === 'inside') ccw = isOuter ? climb : !climb;
     else ccw = isOuter ? !climb : climb;
-    return setOrientation(l, ccw);
+    return { loop: setOrientation(l, ccw), isOuter };
   });
+  // Inner loops (holes, cutouts) before outer ones: a part's outline is the cut that frees it from the stock, so it must
+  // come last, with every internal cutout already made while the part is still held. Nearest-first within each class.
   const out: PreparedLoop[] = [];
   let cur: Vec2 = { x: 0, y: 0 };
-  for (const loop0 of orderByNearest(loops, cur)) {
+  const inner = orderByNearest(oriented.filter(o => !o.isOuter).map(o => o.loop), cur);
+  const outer = orderByNearest(oriented.filter(o => o.isOuter).map(o => o.loop), inner.length ? inner[inner.length - 1].points[0] : cur);
+  for (const loop0 of [...inner, ...outer]) {
     let loop = rotateToNearest(loop0, cur);
     let centers: Vec2[] = [];
     let ivals: TabInterval[] = [];

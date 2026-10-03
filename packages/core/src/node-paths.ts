@@ -49,9 +49,18 @@ export function resolveToolLibrary(opts: { bundled?: string; appName?: string; e
   return { file, source: 'user', userDir, bundled: opts.bundled, seeded };
 }
 
-/** Read a tool library file; a missing or broken file is an empty library. */
+/**
+ * Read a tool library (or machines) file. A missing file is an empty library. A file that exists but cannot be parsed
+ * throws: it used to read as empty, and the next read-modify-write (add a tool) then saved a one-tool library over the
+ * user's whole collection.
+ */
 export function readToolLibrary<T = unknown>(file: string): T[] {
-  try { const t = JSON.parse(fs.readFileSync(file, 'utf8')); return Array.isArray(t) ? (t as T[]) : []; } catch { return []; }
+  let text: string;
+  try { text = fs.readFileSync(file, 'utf8'); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []; throw e; }
+  let t: unknown;
+  try { t = JSON.parse(text); } catch (e) { throw new Error(`${file} is not valid JSON (${(e as Error).message}). Fix or move the file; it has not been overwritten.`); }
+  if (!Array.isArray(t)) throw new Error(`${file} should contain a JSON array.`);
+  return t as T[];
 }
 
 /** Path of another per-user JSON file in the same folder as the tool library (e.g. `machines.json`). */
@@ -59,7 +68,22 @@ export function userFile(name: string, opts: { appName?: string; env?: NodeJS.Pr
   return path.join(userDataDir(opts.appName, opts.env ?? process.env), name);
 }
 
-export function writeToolLibrary(file: string, tools: unknown[]): void {
+/**
+ * Write a file atomically: the data goes to a temp file in the same folder, which is then renamed over the target, so a
+ * crash mid-write or a reader racing the writer never sees a truncated file. Readers (the viewer's watcher, the MCP
+ * server) should ignore `*.tmp` names.
+ */
+export function writeFileAtomic(file: string, data: string | Uint8Array): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(tools, null, 1));
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+  try { fs.writeFileSync(tmp, data); fs.renameSync(tmp, file); }
+  catch (e) { try { fs.unlinkSync(tmp); } catch { /* never written */ } throw e; }
+}
+
+export function writeJsonAtomic(file: string, value: unknown): void {
+  writeFileAtomic(file, JSON.stringify(value, null, 1));
+}
+
+export function writeToolLibrary(file: string, tools: unknown[]): void {
+  writeJsonAtomic(file, tools);
 }

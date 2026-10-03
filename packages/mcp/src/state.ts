@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Job, Toolpath } from '@cool-cam/core';
+import { writeFileAtomic } from '@cool-cam/core/node';
 
 export class JobState {
   job: Job | null = null;
@@ -35,9 +36,9 @@ export class JobState {
     const job = this.current();
     const file = path.join(this.jobsDir, `${this.slug()}.json`);
     const payload = JSON.stringify({ ...job, _savedAt: new Date().toISOString() }, null, 1);
-    fs.writeFileSync(file, payload);
+    writeFileAtomic(file, payload);
     const cur = path.join(this.jobsDir, 'current.json');
-    fs.writeFileSync(cur, payload);
+    writeFileAtomic(cur, payload);
     this.lastWrite = fs.statSync(cur).mtimeMs;
     return file;
   }

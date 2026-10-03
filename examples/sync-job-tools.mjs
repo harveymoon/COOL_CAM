@@ -5,12 +5,13 @@
 //   node examples/sync-job-tools.mjs jobs/foo.json ...
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as C from '../packages/core/dist/index.js';
 import { postGrbl } from '../packages/post/dist/index.js';
 import { simulate } from '../packages/sim/dist/index.js';
 import { resolveToolLibrary, readToolLibrary } from '../packages/core/dist/node-paths.js';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'); // not URL.pathname: that is "/C:/..." on Windows
 const jobsDir = path.join(root, 'jobs');
 const loc = resolveToolLibrary({ bundled: path.join(root, 'library', 'tools.json') });
 const library = readToolLibrary(loc.file);

@@ -4,18 +4,17 @@ import type { Rough3DOp, Finish3DOp } from '../ops.js';
 import type { Tool } from '../tools.js';
 import type { Polyline } from '../geometry/polyline.js';
 import { normalize, offsetPolygons, difference, intersection } from '../geometry/offset.js';
-import { meshBBox, placedMesh } from '../mesh.js';
+import { meshBBox, placedMesh, hashNumbers } from '../mesh.js';
 import { footprintAbove } from '../features.js';
 import { rect } from '../primitives.js';
 import type { Heightmap } from '../mesh.js';
 
 const silhouetteCache = new Map<string, Polyline[]>();
-function checksum(a: number[]): number { let s = a.length; const step = Math.max(1, Math.floor(a.length / 512)); for (let i = 0; i < a.length; i += step) s = (s * 31 + Math.round(a[i] * 1000)) | 0; return s; }
 
-/** Model silhouette (XY projection), cached per model + placement. */
+/** Model silhouette (XY projection), cached per model + placement (the key covers every vertex, see hashNumbers). */
 export function modelSilhouette(job: Job, modelId: string): Polyline[] {
   const m = getModel(job, modelId);
-  const key = JSON.stringify([m.id, checksum(m.positions), m.placement]);
+  const key = JSON.stringify([m.id, hashNumbers(m.positions), m.placement]);
   let s = silhouetteCache.get(key);
   if (!s) { s = footprintAbove(placedMesh(m), -Infinity); if (silhouetteCache.size > 32) silhouetteCache.delete(silhouetteCache.keys().next().value!); silhouetteCache.set(key, s); }
   return s;

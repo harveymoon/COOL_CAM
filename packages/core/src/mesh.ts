@@ -7,6 +7,24 @@ export interface Mesh { positions: Float32Array }
 
 export interface BBox3 { min: [number, number, number]; max: [number, number, number] }
 
+/**
+ * Order-sensitive 32-bit hash over every value, rounded to 1 µm. Used in cache keys for meshes and polygons: hashing a
+ * sample of the values let an edit that keeps the count and the bounding box (one vertex dragged inward) hit a stale entry.
+ */
+export function hashNumbers(a: ArrayLike<number>, seed = 0): number {
+  let h = (seed ^ a.length) | 0;
+  for (let i = 0; i < a.length; i++) { h = Math.imul(h ^ (Math.round(a[i] * 1000) | 0), 0x01000193); h ^= h >>> 15; }
+  return h >>> 0;
+}
+export function hashPoints(points: ArrayLike<{ x: number; y: number }>): number {
+  let h = points.length | 0;
+  for (let i = 0; i < points.length; i++) {
+    h = Math.imul(h ^ (Math.round(points[i].x * 1000) | 0), 0x01000193); h ^= h >>> 15;
+    h = Math.imul(h ^ (Math.round(points[i].y * 1000) | 0), 0x01000193); h ^= h >>> 15;
+  }
+  return h >>> 0;
+}
+
 export function meshBBox(m: Mesh): BBox3 {
   const p = m.positions; const min: [number, number, number] = [Infinity, Infinity, Infinity], max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < p.length; i += 3) for (let k = 0; k < 3; k++) { const v = p[i + k]; if (v < min[k]) min[k] = v; if (v > max[k]) max[k] = v; }

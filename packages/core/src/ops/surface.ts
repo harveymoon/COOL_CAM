@@ -2,7 +2,7 @@ import type { Job } from '../job.js';
 import { getModel, stockBounds } from '../job.js';
 import type { Rough3DOp, Finish3DOp } from '../ops.js';
 import type { Tool } from '../tools.js';
-import { type Heightmap, meshBBox, meshHeightmap, offsetSurface, placedMesh } from '../mesh.js';
+import { type Heightmap, meshBBox, meshHeightmap, offsetSurface, placedMesh, hashNumbers, hashPoints } from '../mesh.js';
 import { bbox } from '../geometry/polyline.js';
 import { boundaryFor, maskFromPolygons } from './boundary.js';
 import type { Polyline } from '../geometry/polyline.js';
@@ -21,13 +21,14 @@ export interface Surface {
 }
 
 const cache = new Map<string, Surface>();
-function checksum(a: number[]): number { let s = a.length; const step = Math.max(1, Math.floor(a.length / 512)); for (let i = 0; i < a.length; i += step) s = (s * 31 + Math.round(a[i] * 1000)) | 0; return s; }
 
 export function surfaceFor(job: Job, op: Rough3DOp | Finish3DOp, tool: Tool, res: number): Surface {
   const model = getModel(job, op.modelId);
   const stl = op.stockToLeave ?? (op.type === 'rough3d' ? 0.3 : 0);
-  const shapeSig = [...(op.shapeIds ?? []), ...(op.avoidShapeIds ?? [])].map(id => { const s = job.shapes.find(x => x.id === id); return s ? [id, s.polyline.points.length, bbox(s.polyline)] : id; });
-  const key = JSON.stringify([model.id, checksum(model.positions), model.placement, tool.id, tool.diameter, tool.type, tool.tipAngle, stl, res, op.boundary ?? 0, op.boundaryMode ?? 'silhouette', op.containment ?? 'inside', shapeSig, job.stock]);
+  // every coordinate of the mesh and of the boundary/avoid shapes goes into the key: an edit that keeps the point count
+  // and the bounding box (one vertex dragged inward) must not reuse a surface whose `allowed` region it just changed
+  const shapeSig = [...(op.shapeIds ?? []), ...(op.avoidShapeIds ?? [])].map(id => { const s = job.shapes.find(x => x.id === id); return s ? [id, s.polyline.closed, hashPoints(s.polyline.points)] : id; });
+  const key = JSON.stringify([model.id, hashNumbers(model.positions), model.placement, tool.id, tool.diameter, tool.type, tool.tipAngle, stl, res, op.boundary ?? 0, op.boundaryMode ?? 'silhouette', op.containment ?? 'inside', shapeSig, job.stock]);
   const hit = cache.get(key); if (hit) return hit;
   if (cache.size > 24) cache.delete(cache.keys().next().value!);
   const mesh = placedMesh(model); const bb = meshBBox(mesh); const sb = stockBounds(job.stock);

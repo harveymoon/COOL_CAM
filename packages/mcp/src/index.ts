@@ -13,7 +13,7 @@ import {
 import type { Job, Op, Tool, Shape, Polyline, MaterialId, Model } from '@cool-cam/core';
 import { postGrbl, summarizePost } from '@cool-cam/post';
 import { simulate } from '@cool-cam/sim';
-import { JobState } from './state.js';
+import { JobState, projectFileName } from './state.js';
 import { resolveToolLibrary, readToolLibrary, writeToolLibrary, userDataDir } from '@cool-cam/core/node';
 
 const jobsDir = process.env.COOL_CAM_JOBS_DIR ?? path.resolve(process.cwd(), 'jobs');
@@ -69,7 +69,7 @@ function jobSummary(job: Job) {
     shapes: job.shapes.map(shapeSummary), paths: (job.paths ?? []).map(p => ({ id: p.id, tool: p.tool, layer: p.layer, points: p.points.length })),
     models: (job.models ?? []).map(modelSummary),
     ops: job.ops,
-    savedTo: path.join(jobsDir, `${state.slug(job.name)}.json`),
+    savedTo: state.filePath(),
   };
 }
 
@@ -85,9 +85,11 @@ const stockSchema = z.object({
 server.registerTool('new_job', {
   title: 'New job',
   description: 'Start a new CAM job with a stock block. Loads the default Carbide 3D tool library (#201, #202, #102, #101, #112, #302, #301).',
-  inputSchema: { name: z.string(), stock: stockSchema, material: z.enum(Object.keys(MATERIALS) as [MaterialId, ...MaterialId[]]).optional(), safeZ: z.number().optional().describe('Rapid height above Z0 between operations (default 10)'), clearanceZ: z.number().optional().describe('Retract height above Z0 within an operation (default 3)') },
-}, guarded(({ name, stock, material, safeZ, clearanceZ }) => {
-  const job = state.set(newJob(name, stock));
+  inputSchema: { name: z.string(), stock: stockSchema, material: z.enum(Object.keys(MATERIALS) as [MaterialId, ...MaterialId[]]).optional(), safeZ: z.number().optional().describe('Rapid height above Z0 between operations (default 10)'), clearanceZ: z.number().optional().describe('Retract height above Z0 within an operation (default 3)'), replace: z.boolean().optional().describe('Overwrite an existing project file of the same name (default: refuse)') },
+}, guarded(({ name, stock, material, safeZ, clearanceZ, replace }) => {
+  const file = projectFileName(name);
+  if (!replace && state.exists(file)) throw new Error(`A project file ${file} already exists in ${jobsDir}. load_job it, choose another name, or pass replace: true to overwrite it.`);
+  const job = state.set(newJob(name, stock), file);
   const lib = readLibrary(); if (lib.length) job.tools = lib.map(t => ({ ...t }));
   if (material) job.material = material;
   if (safeZ !== undefined) job.safeZ = safeZ;
@@ -400,7 +402,7 @@ server.registerTool('export_gcode', {
   if (errors.length && !force) throw new Error(`Not exported: the simulation reports ${errors.length} error(s). Fix the job (or pass force=true to export anyway):\n${errors.slice(0, 10).map(e => `- ${e.opId} move ${e.moveIndex}: ${e.message} @${e.x.toFixed(1)},${e.y.toFixed(1)},${e.z.toFixed(2)}`).join('\n')}`);
   const r = postGrbl(job, tps, { toolChange, parkAtOrigin, arcs, headerNotes: [errors.length ? `Simulation: ${errors.length} error(s), exported with force` : `Simulation: clean, ${sim.events.length} note(s)`] });
   if (!r.gcode) throw new Error(r.warnings.join(' '));
-  const file = out ?? path.join(jobsDir, `${state.slug()}.nc`);
+  const file = out ?? path.join(jobsDir, `${path.basename(state.filePath(), '.json')}.nc`);
   fs.writeFileSync(file, r.gcode);
   const allWarnings = [...r.warnings, ...tps.flatMap(t => t.warnings.map(w => `${t.opName}: ${w}`)), ...sim.events.filter(e => e.severity === 'warning').map(e => `${e.opId}: ${e.message}`)];
   return { file, summary: summarizePost(r), simulation: errors.length ? `${errors.length} error(s), exported with force` : 'clean', warnings: allWarnings, head: r.gcode.split('\n').slice(0, 30).join('\n') };

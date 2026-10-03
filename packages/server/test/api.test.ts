@@ -75,6 +75,22 @@ describe('local API server', () => {
     expect(fs.existsSync(path.join(jobsDir, 'unicode.jpg'))).toBe(false);
     await fetch(url + 'api/jobs/unicode.json', { method: 'DELETE' });
   });
+  it('refuses a save based on a stale revision and stamps every job with its file', async () => {
+    const { url } = await started;
+    const put = (body: unknown) => fetch(url + 'api/jobs/rev.json', { method: 'PUT', body: JSON.stringify(body) });
+    expect((await put({ name: 'Rev', _rev: 'r1' })).status).toBe(200);
+    expect((await (await fetch(url + 'api/jobs/rev.json')).json())._file).toBe('rev.json');
+    expect(JSON.parse(fs.readFileSync(path.join(jobsDir, 'current.json'), 'utf8'))._file).toBe('rev.json');
+    // the MCP server (or anyone) writes revision r2 directly
+    fs.writeFileSync(path.join(jobsDir, 'rev.json'), JSON.stringify({ name: 'Rev by MCP', _rev: 'r2', _file: 'rev.json' }));
+    const stale = await put({ name: 'Rev by viewer', _rev: 'r3', _baseRev: 'r1' });
+    expect(stale.status).toBe(409);
+    const body = await stale.json(); expect(body.rev).toBe('r2'); expect(body.job.name).toBe('Rev by MCP');
+    expect(JSON.parse(fs.readFileSync(path.join(jobsDir, 'rev.json'), 'utf8')).name).toBe('Rev by MCP');
+    expect((await put({ name: 'Rev by viewer', _rev: 'r3', _baseRev: 'r2' })).status).toBe(200);  // based on the newer one: fine
+    expect((await put({ name: 'Script', _rev: 'r4' })).status).toBe(200);                        // no base named: overwrites, as before
+    await fetch(url + 'api/jobs/rev.json', { method: 'DELETE' });
+  });
   it('reports a corrupt tool library instead of serving it as empty', async () => {
     const { url } = await started;
     const file = path.join(dataDir, 'tools.json'); const good = fs.readFileSync(file, 'utf8');

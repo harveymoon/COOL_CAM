@@ -90,6 +90,16 @@ function summarize(file: string, mtime: number): JobListEntry['summary'] {
   summaryCache.set(file, { mtime, summary }); return summary;
 }
 
+/** `_rev` of a job file on disk, cached by mtime (jobs can be multi-MB; a save should not parse the old one every time). */
+const revCache = new Map<string, { mtime: number; rev: string | null }>();
+function revOf(file: string): string | null {
+  let st: fs.Stats; try { st = fs.statSync(file); } catch { return null; }
+  const hit = revCache.get(file); if (hit && hit.mtime === st.mtimeMs) return hit.rev;
+  let rev: string | null = null;
+  try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); rev = typeof j._rev === 'string' ? j._rev : null; } catch { /* unreadable: no revision to defend */ }
+  revCache.set(file, { mtime: st.mtimeMs, rev }); return rev;
+}
+
 export function createApi(opts: ApiOptions): Api {
   const jobsDir = opts.jobsDir;
   fs.mkdirSync(jobsDir, { recursive: true });
@@ -184,8 +194,23 @@ export function createApi(opts: ApiOptions): Api {
           if (!base.endsWith('.json')) { res.statusCode = 400; res.end('job files end in .json'); return true; }
           readBody(req).then(body => {
             try {
-              const job = JSON.parse(body); const payload = JSON.stringify(job, null, 1);
+              const job = JSON.parse(body);
+              if (base !== 'current.json') {
+                // Optimistic concurrency: the viewer and the MCP server both write project files. A client that names the
+                // revision it edited (`_baseRev`) is refused when the file has moved on, and gets the newer job back to
+                // reload or merge; a client that names none (older files, scripts) overwrites as before.
+                const baseRev = job._baseRev; delete job._baseRev;
+                const onDisk = revOf(file);
+                if (typeof baseRev === 'string' && onDisk && onDisk !== baseRev) {
+                  let current: unknown = null; try { current = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* reported without it */ }
+                  json(res, { error: 'conflict', message: `${base} was changed by another writer since it was loaded (revision ${onDisk}, edited ${baseRev})`, rev: onDisk, job: current }, 409);
+                  return;
+                }
+                job._file = base; // the file is the project's identity, whatever the name inside says
+              }
+              const payload = JSON.stringify(job, null, 1);
               writeFileAtomic(file, payload);
+              revCache.set(file, { mtime: fs.statSync(file).mtimeMs, rev: typeof job._rev === 'string' ? job._rev : null });
               if (base !== 'current.json') writeFileAtomic(path.join(jobsDir, 'current.json'), payload);
               json(res, { ok: true, file: base });
             } catch (e) { res.statusCode = 400; res.end(String((e as Error).message)); }

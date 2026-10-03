@@ -2,7 +2,7 @@ import type { Job } from '../job.js';
 import { getShapes, getTool } from '../job.js';
 import type { PocketOp } from '../ops.js';
 import type { Toolpath } from '../toolpath.js';
-import { type Polyline, setOrientation, signedArea, simplify, pointInPolygon } from '../geometry/polyline.js';
+import { type Polyline, setOrientation, signedArea, simplify, pointInPolygon, nearestOnPolyline } from '../geometry/polyline.js';
 import { normalize, offsetPolygons, difference, intersection } from '../geometry/offset.js';
 import type { Vec2 } from '../geometry/vec.js';
 import { dist } from '../geometry/vec.js';
@@ -73,7 +73,16 @@ export interface ClearOptions { stepover: number; entry: 'plunge' | 'helix' | 'r
 export function ringsFor(allowed: Polyline[], stepover: number, climb = true, toolRadius?: number): Ring[] {
   const outers = allowed.filter(l => signedArea(l) > 0);
   const rings: Ring[] = [];
-  const add = (level: number, loops: Polyline[]) => { for (const loop of loops) { const group = outers.findIndex(o => pointInPolygon(loop.points[0], o)); rings.push({ level, loop: simplify(loop), group: Math.max(0, group) }); } };
+  // A level-0 ring is one of the outers themselves (or a hole), so its first point lies on a boundary where the point-in-
+  // polygon test is undefined: match it by identity first. Misgrouping an outer ring puts it after another island's rings,
+  // i.e. slotting the full boundary in solid material before its own interior has been cleared.
+  const add = (level: number, loops: Polyline[]) => {
+    for (const loop of loops) {
+      let group = outers.indexOf(loop);
+      if (group < 0) group = outers.findIndex(o => pointInPolygon(loop.points[0], o));
+      rings.push({ level, loop: simplify(loop), group: Math.max(0, group) });
+    }
+  };
   const levels: Polyline[][] = [];
   for (let level = 0; ; level++) {
     const loops = level === 0 ? allowed : offsetPolygons(allowed, -level * stepover);
@@ -107,6 +116,9 @@ function clearRings(ml: MoveList, ctx: ReturnType<typeof makeContext>, rings: Ri
   const groups = new Map<number, Ring[]>();
   for (const rg of rings) { const g = groups.get(rg.group) ?? []; g.push(rg); groups.set(rg.group, g); }
   let cur = opts.cur; const r = ctx.tool.diameter / 2;
+  /** Rings already cut at this level: the ground within r of them is cleared. */
+  const cutRings: Polyline[] = [];
+  const overCleared = (p: Vec2) => cutRings.some(l => nearestOnPolyline(l, p).dist < r);
   for (const [, grp] of groups) {
     const levels = [...new Set(grp.map(g => g.level))].sort((a, b) => b - a);
     let first = true;
@@ -115,12 +127,16 @@ function clearRings(ml: MoveList, ctx: ReturnType<typeof makeContext>, rings: Ri
       for (const loop0 of loops) {
         const loop = rotateToNearest(loop0, cur);
         const p0 = loop.points[0];
-        if (first) { enter(ml, ctx, opts.entry, p0, r, opts.stepover, prevZ, z, allowed, loop); first = false; }
-        else {
-          const at = ml.position;
-          if (Math.abs(at.z - z) < 1e-6 && segmentInside({ x: at.x, y: at.y }, p0, allowed)) ml.cut(p0.x, p0.y, z);
-          else ml.moveTo(p0.x, p0.y, z, prevZ + 0.5);
-        }
+        // A ring reachable by a straight link through the region is simply cut to. One that is not, but overlaps a ring
+        // already cut (an island's boundary ring, say), is entered by a short plunge over mostly cleared ground. A ring in
+        // solid material (the first one, or the second lobe of a dumbbell the tool cannot pass through) gets the op's
+        // entry: a bare plunge there is what the user chose helix or ramp to avoid.
+        const at = ml.position;
+        if (!first && Math.abs(at.z - z) < 1e-6 && segmentInside({ x: at.x, y: at.y }, p0, allowed)) ml.cut(p0.x, p0.y, z);
+        else if (!first && overCleared(p0)) ml.moveTo(p0.x, p0.y, z, prevZ + 0.5);
+        else enter(ml, ctx, opts.entry, p0, r, opts.stepover, prevZ, z, allowed, loop);
+        first = false;
+        cutRings.push(loop);
         followPath(ml, loop, z);
         cur = ml.position;
       }

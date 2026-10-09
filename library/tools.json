@@ -30,6 +30,21 @@
   "notes": "1/4\" shank, .75\" LOC, 2.25\" OAL. Single flute O-style for aluminium and plastics."
  },
  {
+  "id": "sp102",
+  "number": 102,
+  "name": "SpeTool 1/8\" up-cut 2FL, 1/4\" shank",
+  "type": "endmill",
+  "diameter": 3.175,
+  "flutes": 2,
+  "fluteLength": 12.7,
+  "overallLength": 50.8,
+  "rpm": 18000,
+  "feed": 1200,
+  "plunge": 400,
+  "sku": "SpeTool SP-1/8 Dia 1/4 shank, SPE-X coating (Amazon B0BN5PGTCY)",
+  "notes": "The 1/8\" cutter for the 1/4\" collet: 1/2\" cutting length, 2\" OAL, up-cut. Numbered 102 after Carbide 3D's convention for a 1/8\" 2-flute square endmill so Carbide Motion names it in the prompt. Does the crystal A F125 op (windows, square edges, rabbets) in place of the #274-Z."
+ },
+ {
   "id": "t274z",
   "number": 274,
   "name": "#274-Z 1/8\" single flute ZrN",

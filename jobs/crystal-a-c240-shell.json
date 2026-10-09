@@ -15,19 +15,19 @@
  "clearanceZ": 3,
  "tools": [
   {
-   "id": "t274z",
-   "number": 274,
-   "name": "#274-Z 1/8\" single flute ZrN",
+   "id": "sp102",
+   "number": 102,
+   "name": "SpeTool 1/8\" up-cut 2FL, 1/4\" shank",
    "type": "endmill",
    "diameter": 3.175,
-   "flutes": 1,
+   "flutes": 2,
    "fluteLength": 12.7,
-   "overallLength": 38.1,
+   "overallLength": 50.8,
    "rpm": 18000,
-   "feed": 900,
-   "plunge": 300,
-   "sku": "Nomad Tools #274-Z",
-   "notes": "1/8\" shank, .500\" LOC, 1.5\" OAL. Single flute for aluminium and plastics."
+   "feed": 1200,
+   "plunge": 400,
+   "sku": "SpeTool SP-1/8 Dia 1/4 shank, SPE-X coating (Amazon B0BN5PGTCY)",
+   "notes": "The 1/8\" cutter for the 1/4\" collet: 1/2\" cutting length, 2\" OAL, up-cut. Numbered 102 after Carbide 3D's convention for a 1/8\" 2-flute square endmill so Carbide Motion names it in the prompt. Does the crystal A F125 op (windows, square edges, rabbets) in place of the #274-Z."
   },
   {
    "id": "e287",
@@ -77015,9 +77015,9 @@
  "ops": [
   {
    "id": "trace_f125",
-   "name": "F125 (Nomad #274-Z): windows, square edges, rabbets",
+   "name": "F125 (SpeTool T102): windows, square edges, rabbets",
    "type": "trace",
-   "toolId": "t274z",
+   "toolId": "sp102",
    "shapeIds": [],
    "depth": 5.325,
    "pathIds": [

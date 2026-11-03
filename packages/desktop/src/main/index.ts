@@ -76,6 +76,20 @@ async function boot() {
     baseUrl = url;
     console.log(`[cool-cam] serving ${url} · jobs ${api.jobsDir} · library ${api.library.file}`);
   }
+  await openWindow();
+}
+
+/** Only web links leave the app, in the user's browser; anything else (file:, custom schemes) is dropped. */
+function openOutside(url: string) {
+  try { const u = new URL(url); if (u.protocol === 'http:' || u.protocol === 'https:') shell.openExternal(u.href); else console.warn(`[cool-cam] refused to open ${u.protocol} link`); }
+  catch { /* not a URL */ }
+}
+
+/**
+ * The window onto the running server. Separate from boot(): on macOS the app stays alive with no window, and
+ * re-activating it must open a new window on the same server, not start a second server and folder watcher.
+ */
+async function openWindow() {
   win = new BrowserWindow({
     width: 1500, height: 950, minWidth: 900, minHeight: 600, title: 'Cool CAM', backgroundColor: '#0d0f13',
     webPreferences: { preload: path.join(__dirname, '../preload/index.mjs'), contextIsolation: true, sandbox: false },
@@ -93,7 +107,13 @@ async function boot() {
     ipcMain.once('flushed', done);
     w.webContents.send('flush');
   });
-  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.setWindowOpenHandler(({ url }) => { openOutside(url); return { action: 'deny' }; });
+  // the window only ever shows the local viewer: a navigation anywhere else (a dropped link, a stray anchor) goes to the
+  // browser instead of replacing the app with a page that would get the preload bridge
+  win.webContents.on('will-navigate', (e, url) => {
+    let same = false; try { same = new URL(url).origin === new URL(baseUrl).origin; } catch { /* malformed: treat as foreign */ }
+    if (!same) { e.preventDefault(); openOutside(url); }
+  });
   win.webContents.on('did-fail-load', (_e, code, desc, url, isMainFrame) => { if (isMainFrame) console.error(`[cool-cam] window failed to load ${url}: ${desc} (${code})`); });
   win.webContents.on('console-message', (_e, level, message) => { if (level >= 2) console.error(`[cool-cam] renderer: ${message}`); });
   try { await win.loadURL(baseUrl); }
@@ -153,7 +173,7 @@ app.whenReady().then(async () => {
   setupLogging();
   buildMenu();
   await boot();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) boot(); });
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0 && baseUrl) openWindow().catch(e => console.error('[cool-cam] could not reopen the window', e)); });
 }).catch(e => { console.error('[cool-cam] failed to start', e); dialog.showErrorBox('Cool CAM failed to start', String(e?.stack ?? e)); app.quit(); });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

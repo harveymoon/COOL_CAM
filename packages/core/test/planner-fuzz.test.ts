@@ -12,7 +12,7 @@ import { postGrbl } from '../../post/src/index.js';
  * material it assumed was gone, rapids through stock, or cuts below the stock: the class of bug that breaks cutters.
  * The fuzz seeds are fixed so a failure is reproducible; bump COUNT locally for a deeper search.
  */
-const COUNT = Number(process.env.PLANNER_FUZZ ?? 24);
+const COUNT = Number(process.env.PLANNER_FUZZ || 24); // || not ??: CI passes an empty string when the nightly run is off
 let seed = 12345;
 const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
 const pick = <T,>(a: T[]): T => a[Math.floor(rnd() * a.length)];

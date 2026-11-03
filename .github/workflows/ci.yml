@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # nightly: the deeper planner fuzz (PLANNER_FUZZ=300), which takes too long for every push
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows and macOS are where the app is used; path and shell bugs only show up there
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    env:
+      # the Electron binary is only needed to run or package the desktop app; its type definitions ship without it
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run typecheck
+      - name: test
+        run: npm test
+        env:
+          PLANNER_FUZZ: ${{ github.event_name == 'schedule' && '300' || '' }}
+      - name: MCP server starts and answers
+        shell: bash
+        run: |
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"library_tools","arguments":{}}}' \
+            | node packages/mcp/dist/index.js > mcp.out
+          grep -q '"id":2' mcp.out
+          grep -q 'tools.json' mcp.out

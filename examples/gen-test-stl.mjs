@@ -2,8 +2,9 @@
 // Run: node examples/gen-test-stl.mjs
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const OUT = path.join(path.dirname(new URL(import.meta.url).pathname), 'stl');
+const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'stl');
 fs.mkdirSync(OUT, { recursive: true });
 const INCH = 25.4;
 

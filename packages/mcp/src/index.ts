@@ -14,14 +14,19 @@ import type { Job, Op, Tool, Shape, Polyline, MaterialId, Model } from '@cool-ca
 import { postGrbl, summarizePost } from '@cool-cam/post';
 import { simulate } from '@cool-cam/sim';
 import { JobState, projectFileName } from './state.js';
-import { resolveToolLibrary, readToolLibrary, writeToolLibrary, userDataDir } from '@cool-cam/core/node';
+import { resolveToolLibrary, readToolLibrary, writeToolLibrary, userDataDir, defaultFontDirs, findBundledDir } from '@cool-cam/core/node';
+import { fileURLToPath } from 'node:url';
 
 const jobsDir = process.env.COOL_CAM_JOBS_DIR ?? path.resolve(process.cwd(), 'jobs');
-// the repo's library/tools.json is the bundled default; the user's own library lives in their application-data folder
-const bundledLibrary = path.resolve(jobsDir, '..', 'library', 'tools.json');
+// The bundled library/ folder (default tools.json, extra fonts) relative to this file, not to the jobs folder: in the repo
+// this is packages/mcp/dist → <repo>/library; in the packaged app the bundled server is resources/mcp/index.mjs and the
+// folder is resources/library, while the jobs folder lives in ~/Documents. The user's own library is in the app-data folder.
+const here = path.dirname(fileURLToPath(import.meta.url));
+const bundledDir = findBundledDir([path.resolve(here, '../../../library'), path.resolve(here, '../library'), path.resolve(jobsDir, '..', 'library')]);
+const bundledLibrary = path.join(bundledDir, 'tools.json');
 const library = resolveToolLibrary({ bundled: bundledLibrary });
 const libraryFile = library.file;
-const FONT_DIRS = ['/System/Library/Fonts/Supplemental', '/System/Library/Fonts', '/Library/Fonts', path.join(process.env.HOME ?? '', 'Library/Fonts'), path.resolve(jobsDir, '..', 'library', 'fonts')];
+const FONT_DIRS = defaultFontDirs([path.join(bundledDir, 'fonts')]);
 function listFonts(): { name: string; file: string }[] {
   const out: { name: string; file: string }[] = [];
   for (const d of FONT_DIRS) { try { for (const f of fs.readdirSync(d)) if (/\.(ttf|otf)$/i.test(f)) out.push({ name: f.replace(/\.(ttf|otf)$/i, ''), file: path.join(d, f) }); } catch { /* missing dir */ } }

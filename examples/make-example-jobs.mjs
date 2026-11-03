@@ -2,13 +2,14 @@
 //   node examples/make-example-jobs.mjs
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as C from '../packages/core/dist/index.js';
 import { postGrbl } from '../packages/post/dist/index.js';
 import { simulate } from '../packages/sim/dist/index.js';
 
 import { resolveToolLibrary, readToolLibrary } from '../packages/core/dist/node-paths.js';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stlDir = path.join(root, 'examples', 'stl'), jobsDir = path.join(root, 'jobs');
 // The examples are built for the cutters in the *user's* library (falling back to the bundled defaults), picked by role below.
 const loc = resolveToolLibrary({ bundled: path.join(root, 'library', 'tools.json') });

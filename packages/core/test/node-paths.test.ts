@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveToolLibrary, userDataDir, readToolLibrary, writeToolLibrary, writeFileAtomic } from '../src/node-paths.js';
+import { resolveToolLibrary, userDataDir, readToolLibrary, writeToolLibrary, writeFileAtomic, findBundledDir, defaultFontDirs } from '../src/node-paths.js';
 
 describe('tool library location', () => {
   it('seeds the user library from the bundled defaults once, then leaves the bundled file alone', () => {
@@ -39,6 +39,19 @@ describe('tool library location', () => {
     expect(readToolLibrary(file)).toEqual([{ id: 'b' }]);
     writeFileAtomic(path.join(dir, 'nested', 'thumb.jpg'), Uint8Array.from([1, 2, 3]));
     expect(fs.readdirSync(path.join(dir, 'nested')).sort()).toEqual(['thumb.jpg', 'tools.json']);
+  });
+  it('finds the bundled library folder from the program, not from the jobs folder', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coolcam-bundled-'));
+    const repoLib = path.join(dir, 'repo', 'library'), appLib = path.join(dir, 'app', 'resources', 'library');
+    fs.mkdirSync(appLib, { recursive: true }); fs.writeFileSync(path.join(appLib, 'tools.json'), '[]');
+    // packaged layout: the repo candidate does not exist, the resources one does
+    expect(findBundledDir([repoLib, appLib], {} as NodeJS.ProcessEnv)).toBe(appLib);
+    // nothing exists: the first candidate is returned so the path still prints sensibly
+    expect(findBundledDir([repoLib], {} as NodeJS.ProcessEnv)).toBe(repoLib);
+    expect(findBundledDir([repoLib, appLib], { COOL_CAM_BUNDLED_DIR: '/x/lib' } as NodeJS.ProcessEnv)).toBe('/x/lib');
+    const fonts = defaultFontDirs(['/extra'], { WINDIR: 'D:\\Win', LOCALAPPDATA: 'D:\\Local' } as NodeJS.ProcessEnv);
+    expect(fonts.at(-1)).toBe('/extra'); expect(fonts.length).toBeGreaterThan(2);
+    if (process.platform === 'win32') expect(fonts[0]).toBe(path.join('D:\\Win', 'Fonts'));
   });
   it('honours COOL_CAM_LIBRARY and falls back to platform folders', () => {
     const env = { COOL_CAM_LIBRARY: '/tmp/x/tools.json' } as NodeJS.ProcessEnv;

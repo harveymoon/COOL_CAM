@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveToolLibrary, readToolLibrary, writeToolLibrary, writeFileAtomic, type LibraryLocation } from '@cool-cam/core/node';
+import { resolveToolLibrary, readToolLibrary, writeToolLibrary, writeFileAtomic, defaultFontDirs, type LibraryLocation } from '@cool-cam/core/node';
 
 export interface ApiOptions {
   /** Folder holding <slug>.json jobs and current.json. Created if missing. */
@@ -32,16 +32,8 @@ export interface Api {
   announce(url: string): void;
 }
 
-/** Platform font folders the text tool can read TTF/OTF files from. */
-export function defaultFontDirs(extra: string[] = []): string[] {
-  const home = os.homedir();
-  const dirs = process.platform === 'darwin'
-    ? ['/System/Library/Fonts/Supplemental', '/System/Library/Fonts', '/Library/Fonts', path.join(home, 'Library/Fonts')]
-    : process.platform === 'win32'
-      ? [path.join(process.env.WINDIR ?? 'C:\\Windows', 'Fonts'), path.join(process.env.LOCALAPPDATA ?? path.join(home, 'AppData', 'Local'), 'Microsoft', 'Fonts')]
-      : ['/usr/share/fonts', '/usr/local/share/fonts', path.join(home, '.fonts'), path.join(home, '.local/share/fonts')];
-  return [...dirs, ...extra];
-}
+/** Platform font folders the text tool can read TTF/OTF files from (lives in core/node; re-exported for existing callers). */
+export { defaultFontDirs };
 
 /** Default jobs folder outside the repo: ~/Documents/Cool CAM/jobs (COOL_CAM_JOBS_DIR overrides). */
 export function defaultJobsDir(documentsDir = path.join(os.homedir(), 'Documents')): string {

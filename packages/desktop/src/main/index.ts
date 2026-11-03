@@ -109,7 +109,7 @@ async function boot() {
 
 /** The .mcp.json entry that lets Claude Code drive this install: the Electron binary runs the bundled MCP server as Node. */
 function mcpConfig() {
-  return { mcpServers: { 'cool-cam': { command: process.execPath, args: [mcpEntry], env: { ELECTRON_RUN_AS_NODE: '1', COOL_CAM_JOBS_DIR: jobsDir } } } };
+  return { mcpServers: { 'cool-cam': { command: process.execPath, args: [mcpEntry], env: { ELECTRON_RUN_AS_NODE: '1', COOL_CAM_JOBS_DIR: jobsDir, COOL_CAM_BUNDLED_DIR: path.join(resources, 'library') } } } };
 }
 
 /** Menu definitions mirrored from the renderer (see viewer/src/nativeMenu.ts). */

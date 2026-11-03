@@ -63,6 +63,27 @@ export function readToolLibrary<T = unknown>(file: string): T[] {
   return t as T[];
 }
 
+/** Platform font folders the text tool can read TTF/OTF files from (shared by the local API and the MCP server). */
+export function defaultFontDirs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env): string[] {
+  const home = os.homedir();
+  const dirs = process.platform === 'darwin'
+    ? ['/System/Library/Fonts/Supplemental', '/System/Library/Fonts', '/Library/Fonts', path.join(home, 'Library/Fonts')]
+    : process.platform === 'win32'
+      ? [path.join(env.WINDIR ?? 'C:\\Windows', 'Fonts'), path.join(env.LOCALAPPDATA ?? path.join(home, 'AppData', 'Local'), 'Microsoft', 'Fonts')]
+      : ['/usr/share/fonts', '/usr/local/share/fonts', path.join(home, '.fonts'), path.join(home, '.local/share/fonts')];
+  return [...dirs, ...extra];
+}
+
+/**
+ * The bundled `library/` folder (default tools.json, extra fonts) for a program at `moduleDir`: `COOL_CAM_BUNDLED_DIR`
+ * if set, else the first candidate that exists. Callers pass candidates for their layouts (repo: packages/x/dist → repo
+ * root; packaged app: resources/mcp → resources). Returns the first candidate when none exists, so paths stay printable.
+ */
+export function findBundledDir(candidates: string[], env: NodeJS.ProcessEnv = process.env): string {
+  if (env.COOL_CAM_BUNDLED_DIR) return env.COOL_CAM_BUNDLED_DIR;
+  return candidates.find(d => fs.existsSync(path.join(d, 'tools.json'))) ?? candidates[0];
+}
+
 /** Path of another per-user JSON file in the same folder as the tool library (e.g. `machines.json`). */
 export function userFile(name: string, opts: { appName?: string; env?: NodeJS.ProcessEnv } = {}): string {
   return path.join(userDataDir(opts.appName, opts.env ?? process.env), name);

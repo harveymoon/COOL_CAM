@@ -2,11 +2,12 @@
 // Run after `npm run build`: node examples/gen-bracket-stl.mjs
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import earcutMod from 'earcut';
 import * as C from '../packages/core/dist/index.js';
 const earcut = earcutMod.default ?? earcutMod;
 
-const OUT = path.join(path.dirname(new URL(import.meta.url).pathname), 'stl');
+const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'stl');
 const H = 12;
 const footprint = C.normalize([C.rect(0, 0, 60, 40, 6)]);
 const pocket = C.normalize([C.rect(8, 12, 26, 16, 3)]);

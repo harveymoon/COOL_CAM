@@ -2,7 +2,8 @@
 // with the Electron binary as Node (ELECTRON_RUN_AS_NODE=1) without any node_modules.
 import { build } from 'esbuild';
 import path from 'node:path';
-const here = path.dirname(new URL(import.meta.url).pathname);
+import { fileURLToPath } from 'node:url';
+const here = path.dirname(fileURLToPath(import.meta.url));
 await build({
   entryPoints: [path.resolve(here, '../../mcp/dist/index.js')],
   bundle: true, platform: 'node', format: 'esm', target: 'node20',

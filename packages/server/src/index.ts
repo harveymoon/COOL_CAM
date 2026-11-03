@@ -13,6 +13,11 @@ import { resolveToolLibrary, readToolLibrary, writeToolLibrary, writeFileAtomic,
 export interface ApiOptions {
   /** Folder holding <slug>.json jobs and current.json. Created if missing. */
   jobsDir: string;
+  /**
+   * Host names (without port) accepted in the Host header besides loopback (localhost, *.localhost, 127.0.0.1, ::1).
+   * Needed only when the API is deliberately served on a LAN address.
+   */
+  allowedHosts?: string[];
   /** The read-only bundled tool defaults (repo `library/tools.json`); seeds the user library on first use. */
   bundledLibrary?: string;
   /** Extra font directories on top of the platform defaults. */
@@ -82,6 +87,13 @@ function summarize(file: string, mtime: number): JobListEntry['summary'] {
   summaryCache.set(file, { mtime, summary }); return summary;
 }
 
+/** Is this Host header a loopback name (or one the host app allows)? A missing header (HTTP/1.0 tools) is allowed. */
+export function hostAllowed(host: string | undefined, extra: string[] = []): boolean {
+  if (!host) return true;
+  const name = (host.startsWith('[') ? host.slice(1, host.indexOf(']')) : host.replace(/:\d+$/, '')).toLowerCase();
+  return name === 'localhost' || name.endsWith('.localhost') || name === '127.0.0.1' || name === '::1' || extra.map(h => h.toLowerCase()).includes(name);
+}
+
 /** `_rev` of a job file on disk, cached by mtime (jobs can be multi-MB; a save should not parse the old one every time). */
 const revCache = new Map<string, { mtime: number; rev: string | null }>();
 function revOf(file: string): string | null {
@@ -116,6 +128,10 @@ export function createApi(opts: ApiOptions): Api {
   const handle = (req: http.IncomingMessage, res: http.ServerResponse): boolean => {
     const url = req.url ?? '';
     if (!url.startsWith('/api/')) return false;
+    // DNS rebinding: a web page on evil.example can point its own name at 127.0.0.1 and then talk to this server as a
+    // same-origin page, reading /api/info or rewriting machines.json (safe Z) and tools.json (diameters). Its requests
+    // still carry its own name in the Host header, so only loopback names (and any the host app lists) are served.
+    if (!hostAllowed(req.headers.host, opts.allowedHosts)) { res.statusCode = 403; res.end('forbidden host'); return true; }
     const route = url.split('?')[0];
     try {
       if (route === '/api/events') {

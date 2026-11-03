@@ -2,7 +2,8 @@ import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { startServer, defaultFontDirs } from '../src/index.js';
+import http from 'node:http';
+import { startServer, defaultFontDirs, hostAllowed } from '../src/index.js';
 
 describe('local API server', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coolcam-api-'));
@@ -99,6 +100,24 @@ describe('local API server', () => {
     expect(r.status).toBe(500); expect(await r.text()).toMatch(/not valid JSON/);
     expect(fs.readFileSync(file, 'utf8')).toBe('[{"id": "torn');
     fs.writeFileSync(file, good);
+  });
+  it('refuses requests whose Host header is not a loopback name (DNS rebinding)', async () => {
+    const { port } = await started;
+    // fetch() will not let us set Host, so speak HTTP directly
+    const get = (host: string, method = 'GET', body = '') => new Promise<number>((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, path: method === 'GET' ? '/api/info' : '/api/machines', method, headers: { host, 'content-type': 'application/json' } }, res => { res.resume(); resolve(res.statusCode ?? 0); });
+      req.on('error', reject); req.end(body);
+    });
+    expect(await get(`127.0.0.1:${port}`)).toBe(200);
+    expect(await get(`localhost:${port}`)).toBe(200);
+    expect(await get(`[::1]:${port}`)).toBe(200);
+    expect(await get(`evil.example:${port}`)).toBe(403);
+    expect(await get(`localhost.evil.example:${port}`)).toBe(403);
+    const before = fs.existsSync(path.join(dataDir, 'machines.json')) ? fs.readFileSync(path.join(dataDir, 'machines.json'), 'utf8') : null;
+    expect(await get(`evil.example:${port}`, 'PUT', '[]')).toBe(403);
+    expect(fs.existsSync(path.join(dataDir, 'machines.json')) ? fs.readFileSync(path.join(dataDir, 'machines.json'), 'utf8') : null).toBe(before);
+    expect(hostAllowed('cnc.local:5174', ['cnc.local'])).toBe(true);
+    expect(hostAllowed(undefined)).toBe(true);
   });
   it('lists platform font folders', () => {
     expect(defaultFontDirs(['/extra']).at(-1)).toBe('/extra');

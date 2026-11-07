@@ -41,24 +41,51 @@ export function generatePocket(job: Job, op: PocketOp): Toolpath {
 
   const finishLoops = op.finishPass && stl > 0 ? offsetPolygons(region, -r).map(l => setOrientation(simplify(l), signedArea(l) > 0 ? climb : !climb)) : [];
 
+  // Separate pockets (one per island group of the tool-centre region) are each cut through every depth before the next,
+  // so the cutter doesn't travel between shapes on every pass. Inside one pocket the tool stays down between levels.
+  const outers = allowed.filter(l => signedArea(l) > 0);
+  const byGroup = new Map<number, { rings: Ring[]; finish: Polyline[] }>();
+  for (const rg of rings) { const g = byGroup.get(rg.group) ?? { rings: [], finish: [] }; g.rings.push(rg); byGroup.set(rg.group, g); }
+  for (const fl of finishLoops) {
+    // a finish loop round an island lies inside its pocket's tool-centre outline; an outer finish loop encloses it
+    let gi = outers.findIndex(o => pointInPolygon(fl.points[0], o));
+    if (gi < 0) gi = outers.findIndex(o => pointInPolygon(o.points[0], fl));
+    if (gi < 0 || !byGroup.has(gi)) gi = [...byGroup.keys()][0];
+    byGroup.get(gi)!.finish.push(fl);
+  }
+  const startOf = (g: { rings: Ring[] }) => g.rings[0].loop.points[0];
   let cur: Vec2 = { x: 0, y: 0 };
-  let prevZ = ctx.stockTop;
-  for (const z of ctx.passes) {
-    cur = clearRings(ml, ctx, rings, allowed, z, prevZ, { stepover, entry: op.entry ?? 'helix', cur });
-    for (const fl0 of orderByNearest(finishLoops, cur)) {
-      const fl = rotateToNearest(fl0, cur);
-      ml.moveTo(fl.points[0].x, fl.points[0].y, z, prevZ + 0.5);
-      followPath(ml, fl, z);
-      ml.retract();
-      cur = ml.position;
+  const pending = [...byGroup.values()];
+  while (pending.length) {
+    pending.sort((a, b) => dist(startOf(a), cur) - dist(startOf(b), cur));
+    const grp = pending.shift()!;
+    let prevZ = ctx.stockTop;
+    for (let i = 0; i < ctx.passes.length; i++) {
+      const z = ctx.passes[i];
+      const last = i === ctx.passes.length - 1;
+      cur = clearRings(ml, ctx, grp.rings, allowed, z, prevZ, { stepover, entry: op.entry ?? 'helix', cur, stayDown: i > 0 && grp.finish.length === 0, retractAfter: last || grp.finish.length > 0 });
+      for (const fl0 of orderByNearest(grp.finish, cur)) {
+        const fl = rotateToNearest(fl0, cur);
+        ml.moveTo(fl.points[0].x, fl.points[0].y, z, prevZ + 0.5);
+        followPath(ml, fl, z);
+        ml.retract();
+        cur = ml.position;
+      }
+      prevZ = z;
     }
-    prevZ = z;
   }
   ml.retract(ctx.safeZ);
   return { opId: op.id, opName: op.name ?? 'Pocket', toolId: tool.id, rpm: ctx.rpm, moves: ml.moves, warnings: ctx.warnings, stepdown: ctx.stepdown };
 }
 
-export interface ClearOptions { stepover: number; entry: 'plunge' | 'helix' | 'ramp'; cur: Vec2; climb?: boolean }
+export interface ClearOptions {
+  stepover: number; entry: 'plunge' | 'helix' | 'ramp'; cur: Vec2; climb?: boolean;
+  /** The tool is still down in this same pocket on the level just cut (prevZ): reach the next entry by a move inside the
+   *  cleared region, just above that level, instead of lifting to clearance. */
+  stayDown?: boolean;
+  /** Lift to clearance after each island group (default true). */
+  retractAfter?: boolean;
+}
 
 /**
  * Build the concentric ring family for a tool-centre region (level 0 = region boundary itself).
@@ -119,6 +146,9 @@ function clearRings(ml: MoveList, ctx: ReturnType<typeof makeContext>, rings: Ri
   /** Rings already cut at this level: the ground within r of them is cleared. */
   const cutRings: Polyline[] = [];
   const overCleared = (p: Vec2) => cutRings.some(l => nearestOnPolyline(l, p).dist < r);
+  // Level-0 rings lie exactly on the region's edge, where an inside test is a coin toss: test straight links against the
+  // region grown by a hundredth of a millimetre, or a link to the outer ring fails at random and the tool lifts to clearance.
+  const linkRegion = offsetPolygons(allowed, 0.01);
   for (const [, grp] of groups) {
     const levels = [...new Set(grp.map(g => g.level))].sort((a, b) => b - a);
     let first = true;
@@ -132,22 +162,35 @@ function clearRings(ml: MoveList, ctx: ReturnType<typeof makeContext>, rings: Ri
         // solid material (the first one, or the second lobe of a dumbbell the tool cannot pass through) gets the op's
         // entry: a bare plunge there is what the user chose helix or ramp to avoid.
         const at = ml.position;
-        if (!first && Math.abs(at.z - z) < 1e-6 && segmentInside({ x: at.x, y: at.y }, p0, allowed)) ml.cut(p0.x, p0.y, z);
+        if (!first && Math.abs(at.z - z) < 1e-6 && segmentInside({ x: at.x, y: at.y }, p0, linkRegion)) ml.cut(p0.x, p0.y, z);
         else if (!first && overCleared(p0)) ml.moveTo(p0.x, p0.y, z, prevZ + 0.5);
-        else enter(ml, ctx, opts.entry, p0, r, opts.stepover, prevZ, z, allowed, loop);
+        else enter(ml, ctx, opts.entry, p0, r, opts.stepover, prevZ, z, allowed, loop, first && !!opts.stayDown && groups.size === 1, linkRegion);
         first = false;
         cutRings.push(loop);
         followPath(ml, loop, z);
         cur = ml.position;
       }
     }
-    ml.retract();
+    if (opts.retractAfter ?? true) ml.retract();
   }
   return cur;
 }
 
-function enter(ml: MoveList, ctx: ReturnType<typeof makeContext>, entry: 'plunge' | 'helix' | 'ramp', p0: Vec2, r: number, stepover: number, prevZ: number, z: number, allowed: Polyline[], loop: Polyline) {
+function enter(ml: MoveList, ctx: ReturnType<typeof makeContext>, entry: 'plunge' | 'helix' | 'ramp', p0: Vec2, r: number, stepover: number, prevZ: number, z: number, allowed: Polyline[], loop: Polyline, stayDown = false, linkRegion: Polyline[] = allowed) {
   const approach = prevZ + 0.5;
+  // Go to (x, y) at the approach height. Still inside a pocket whose last level is fully cleared, a straight move just above
+  // that floor stays in cleared ground; otherwise lift to clearance first.
+  const goTo = (x: number, y: number) => {
+    const at = ml.position;
+    if (stayDown && Math.abs(at.z - prevZ) < 1e-6 && segmentInside({ x: at.x, y: at.y }, { x, y }, linkRegion)) {
+      ml.rapid(at.x, at.y, approach);
+      ml.rapid(x, y, approach);
+      return;
+    }
+    ml.retract();
+    ml.rapid(x, y, ctx.clearanceZ);
+    ml.rapid(x, y, approach);
+  };
   if (entry === 'helix') {
     // helix radius: fits inside the tool-centre region around p0
     let hr = Math.min(r * 0.8, stepover);
@@ -156,9 +199,7 @@ function enter(ml: MoveList, ctx: ReturnType<typeof makeContext>, entry: 'plunge
     // move centre inward along the loop's local normal if needed
     while (hr > 0.3 && !fits(center, hr)) hr *= 0.7;
     if (hr > 0.3) {
-      ml.retract();
-      ml.rapid(center.x + hr, center.y, ctx.clearanceZ);
-      ml.rapid(center.x + hr, center.y, approach);
+      goTo(center.x + hr, center.y);
       helixEntry(ml, center, hr, approach, z, Math.max(0.5, ctx.tool.diameter * 0.15), ctx.plunge * 1.5);
       ml.cut(p0.x, p0.y, z);
       return;
@@ -167,7 +208,7 @@ function enter(ml: MoveList, ctx: ReturnType<typeof makeContext>, entry: 'plunge
   }
   if (entry === 'ramp') {
     const pts = loop.points; const rampLen = Math.max(3 * r, (prevZ - z) / Math.tan((3 * Math.PI) / 180));
-    ml.retract(); ml.rapid(p0.x, p0.y, ctx.clearanceZ); ml.rapid(p0.x, p0.y, approach);
+    goTo(p0.x, p0.y);
     // zig-zag along the first segment(s)
     let len = 0; const segs: { a: Vec2; b: Vec2 }[] = [];
     for (let i = 0; i < pts.length && len < rampLen; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; segs.push({ a, b }); len += dist(a, b); }
@@ -183,7 +224,8 @@ function enter(ml: MoveList, ctx: ReturnType<typeof makeContext>, entry: 'plunge
     void done;
     return;
   }
-  ml.moveTo(p0.x, p0.y, z, approach);
+  goTo(p0.x, p0.y);
+  ml.plunge(p0.x, p0.y, z);
 }
 
 function empty(op: PocketOp, ctx: ReturnType<typeof makeContext>): Toolpath {

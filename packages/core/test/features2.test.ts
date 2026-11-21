@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { newJob, rect, circleShape, generateToolpaths, getTool, loadFont, textToPolylines, heightmapToMesh, meshBBox, bbox, signedArea, polygon } from '../src/index.js';
 import type { VCarveOp, KeyholeOp, ProfileOp, PocketOp, Tool } from '../src/index.js';
 import { postGrbl } from '../../post/src/index.js';
+import { StockSim } from '../../sim/src/index.js';
 
 const ARIAL = '/System/Library/Fonts/Supplemental/Arial.ttf';
 
@@ -28,6 +29,25 @@ describe('v-carve', () => {
     expect(tps).toHaveLength(2); expect(tps[0].toolId).toBe('t102'); expect(tps[0].opName).toContain('flat');
     expect(Math.min(...tps[0].moves.filter(m => m.kind === 'cut').map(m => m.z))).toBeCloseTo(-3, 3);
     expect(Math.min(...tps[1].moves.filter(m => m.kind === 'cut').map(m => m.z))).toBeGreaterThan(-3.01);
+  });
+  it('with flat clearing, the V-bit does not re-cut the flat floor, and the floor is still fully cleared', () => {
+    const j = newJob('v3', { width: 120, length: 80, thickness: 12 });
+    j.shapes.push({ id: 'r', polyline: rect(10, 10, 80, 50) });
+    j.ops.push({ id: 'v', type: 'vcarve', toolId: 't301', shapeIds: ['r'], depth: 3, flatToolId: 't102' } as VCarveOp);
+    const tps = generateToolpaths(j);
+    const v = tps.find(t => t.toolId === 't301')!;
+    const maxD = 3; // 90° V: offset at the 3 mm cap = 3 mm; flat tool radius 1.5875, stepover 0.4
+    const inset = (m: { x: number; y: number }) => Math.min(m.x - 10, 90 - m.x, m.y - 10, 60 - m.y);
+    const vCuts = v.moves.filter(m => m.kind === 'cut');
+    expect(Math.max(...vCuts.map(inset))).toBeLessThanOrEqual(maxD + 1.5875 + 0.4 + 0.41);
+    expect(v.warnings.join(' ')).not.toMatch(/stepped floor/);
+    // the floor inside the V's reach is flat at the cap: the flat tool and the V passes together leave nothing standing
+    const s = new StockSim(j, tps, { resolution: 0.25, keyframeEvery: 0 }); s.runAll();
+    let worst = -Infinity;
+    for (let x = 10 + maxD + 0.5; x <= 90 - maxD - 0.5; x += 0.5) for (let y = 10 + maxD + 0.5; y <= 60 - maxD - 0.5; y += 0.5) {
+      const i = Math.floor((x - s.x0) / s.res), jj = Math.floor((y - s.y0) / s.res); worst = Math.max(worst, s.heights[jj * s.w + i]);
+    }
+    expect(worst).toBeLessThan(-3 + 0.05);
   });
 });
 

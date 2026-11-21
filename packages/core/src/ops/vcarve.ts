@@ -37,6 +37,7 @@ export function generateVCarve(job: Job, op: VCarveOp): Toolpath {
   let cur: Vec2 = { x: 0, y: 0 };
 
   // advanced: flat-clear everything the V-bit will not reach within the cap, with the flat endmill at the cap depth
+  let flatReach = Infinity; // V passes past this offset would only re-cut the floor the flat tool already cleared
   if (op.flatToolId && op.depth > 0) {
     const flat = getTool(job, op.flatToolId);
     // the flat endmill runs on its own feeds, not the ones tuned for the V-bit
@@ -49,12 +50,16 @@ export function generateVCarve(job: Job, op: VCarveOp): Toolpath {
       fml.retract(flatCtx.safeZ);
       // the flat tool moves are emitted as a separate toolpath by generateToolpaths? No: keep one op = one tool. Store them for the caller.
       flatMoves.set(op.id, { moves: fml.moves, toolId: flat.id, rpm: flatCtx.rpm, warnings: flatCtx.warnings, stepdown: flatCtx.stepdown });
+      // The flat tool clears the opening of A = offset(region, -maxD) by its radius r: every point of A at least r from A's
+      // edge, i.e. at least maxD + r inside the outline. Only the band between maxD and maxD + r (mostly A's corners,
+      // which a round cutter cannot reach) still needs the V-bit's tip at the cap depth; one stepover of margin on top.
+      flatReach = maxD + flat.diameter / 2 + ds;
     }
   }
 
   // V passes, outermost first so the groove opens progressively; each region loop family is walked separately
   const passes: { d: number; z: number; loops: Polyline[] }[] = [];
-  for (let d = ds; d < 1e4; d += ds) {
+  for (let d = ds; d < 1e4 && d <= flatReach; d += ds) {
     const loops = offsetPolygons(region, -d).map(l => simplify(l, 0.005)).filter(l => Math.abs(signedArea(l)) > 0.01);
     if (!loops.length) break;
     const zc = top - Math.min(d, maxD) / tanHalf;
@@ -63,7 +68,7 @@ export function generateVCarve(job: Job, op: VCarveOp): Toolpath {
   }
   if (!passes.length) { ctx.warnings.push('Region too narrow for the first V pass; reduce the stepover.'); return done(); }
   const deepest = passes[passes.length - 1].d / tanHalf;
-  if (deepest > depthCap + 1e-9) {
+  if (deepest > depthCap + 1e-9 && !Number.isFinite(flatReach)) { // with flat clearing the floor is the endmill's, not stepped
     const why = op.depth > 0 && op.depth <= hardCap ? `the depth cap ${op.depth} mm` : depthCap >= job.stock.thickness - 1e-9 ? `the stock bottom (${job.stock.thickness} mm)` : `the end of the V flank (${depthCap.toFixed(2)} mm for a ${tool.diameter} mm bit)`;
     ctx.warnings.push(`Region is wider than the V can carve: depth clamped at ${why}, so wide areas get a stepped floor${op.flatToolId ? '' : '. Add a flat-clearing tool for a clean floor'}.`);
   }

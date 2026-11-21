@@ -44,7 +44,9 @@ export function generateTrace(job: Job, op: TraceOp): Toolpath {
   const zAt = (x: number, y: number, given: number): number => {
     let z: number;
     if (off) {
-      const s = sampleHeightmap(off, x, y);
+      // sampleHeightmap clamps to the edge, so a point past the grid would silently take the edge's height: test the extent
+      const inside = x >= off.x0 && y >= off.y0 && x <= off.x0 + (off.w - 1) * off.res && y <= off.y0 + (off.h - 1) * off.res;
+      const s = inside ? sampleHeightmap(off, x, y) : NaN;
       if (!Number.isFinite(s)) { outside++; z = given + dz; }
       else { z = s; const d = given - s; compared++; if (d > maxAbove) maxAbove = d; if (-d > maxBelow) maxBelow = -d; }
     } else z = given + dz;

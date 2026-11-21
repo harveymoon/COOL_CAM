@@ -54,6 +54,18 @@ describe('trace operation', () => {
     const onTop = cuts.filter(m => m.x < 36);
     expect(Math.min(...onTop.map(m => m.z))).toBeGreaterThan(-0.05);
     expect(tp.warnings.some(w => /Projected onto box/.test(w))).toBe(true);
+    expect(tp.warnings.some(w => /outside the model's heightmap/.test(w))).toBe(false);
+  });
+  it('project mode reports points beyond the heightmap instead of giving them the edge height', () => {
+    const j = newJob('t', { width: 100, length: 100, thickness: 10 });
+    j.models = [boxModel(j, 30, 30, 6)];
+    // the heightmap is clipped to the stock (plus the tool radius): this path runs 30 mm past the stock's right edge
+    j.paths = [{ id: 'a', points: [[90, 25, -2], [130, 25, -2]] }];
+    j.ops = [{ id: 'tr', type: 'trace', toolId: 't102', shapeIds: [], pathIds: ['a'], mode: 'project', modelId: 'box', depth: 10, resolution: 0.2 } as TraceOp];
+    const [tp] = generateToolpaths(j);
+    expect(tp.warnings.some(w => /point\(s\) fell outside the model's heightmap and kept their given Z/.test(w))).toBe(true);
+    // beyond the grid the given Z is kept, not the edge's
+    expect(tp.moves.filter(m => m.kind === 'cut' && m.x > 110).every(m => Math.abs(m.z + 2) < 1e-6)).toBe(true);
   });
 });
 

@@ -364,7 +364,13 @@ server.registerTool('update_operation', { title: 'Update operation', description
     getTool(job, parsed.data.toolId);
     for (const sid of parsed.data.shapeIds ?? []) if (!job.shapes.some(s => s.id === sid)) throw new Error(`Unknown shape ${sid}`);
     if ('modelId' in parsed.data && parsed.data.modelId) getModel(job, parsed.data.modelId);
-    Object.assign(op, patch); state.invalidate(); state.save(); return op;
+    // apply the *validated* values, and only the fields the patch named: zod coerces and strips, the raw patch does not.
+    // A field zod dropped is not part of this op type (a typo, or a profile field on a pocket): say so instead of storing it.
+    const valid = parsed.data as Record<string, unknown>;
+    const unknown = Object.keys(patch).filter(k => !(k in valid));
+    if (unknown.length) throw new Error(`Unknown field(s) for a ${op.type} operation: ${unknown.join(', ')}`);
+    for (const k of Object.keys(patch)) (op as unknown as Record<string, unknown>)[k] = valid[k];
+    state.invalidate(); state.save(); return op;
   }));
 
 server.registerTool('remove_operation', { title: 'Remove operation', description: 'Delete an operation by id.', inputSchema: { id: z.string() } },

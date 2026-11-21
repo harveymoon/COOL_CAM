@@ -29,6 +29,16 @@ describe('stock sim', () => {
     expect(s.events.some(e => e.code === 'rapid-into-stock')).toBe(true);
     expect(s.events.some(e => e.code === 'below-stock')).toBe(true);
   });
+  it('flags a rapid below the floor beside the stock, where the height grid does not reach', () => {
+    const j = newJob('sim4', { width: 60, length: 60, thickness: 10 });
+    const t = (moves: Toolpath['moves']): Toolpath => ({ opId: 'x', opName: 'x', toolId: 't201', rpm: 18000, warnings: [], moves });
+    // a rapid travelling at Z -12 (the stock bottom is -10, no allowance) to the left of the stock
+    const bad = simulate(j, [t([{ kind: 'rapid', x: -20, y: 10, z: 5 }, { kind: 'rapid', x: -20, y: 10, z: -12 }, { kind: 'rapid', x: -20, y: 50, z: -12 }, { kind: 'rapid', x: -20, y: 50, z: 5 }])], { resolution: 0.5 });
+    expect(bad.events.some(e => e.code === 'below-stock' && /Rapid .* outside the stock/.test(e.message))).toBe(true);
+    // the same moves above the floor beside the stock are fine
+    const ok = simulate(j, [t([{ kind: 'rapid', x: -20, y: 10, z: 5 }, { kind: 'rapid', x: -20, y: 10, z: -9 }, { kind: 'rapid', x: -20, y: 50, z: -9 }, { kind: 'rapid', x: -20, y: 50, z: 5 }])], { resolution: 0.5 });
+    expect(ok.events.filter(e => e.severity === 'error')).toEqual([]);
+  });
   it('seek reproduces runAll state', () => {
     const j = newJob('sim3', { width: 40, length: 40, thickness: 5 });
     j.shapes.push({ id: 'r', polyline: rect(5, 5, 30, 30) });

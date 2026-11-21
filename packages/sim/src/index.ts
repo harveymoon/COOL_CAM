@@ -173,6 +173,12 @@ export class StockSim {
     // the spoilboard allowance is planned cutting into a sacrificial board (the simulator already treats everything under the
     // stock bottom as material, so engagement checks see it); beyond the allowance it is an error
     if (m.z < b.floor - 1e-6 && !isRapid) this.event('error', 'below-stock', `Cut goes ${(b.bottom - m.z).toFixed(2)} mm below the stock bottom${b.floor < b.bottom ? ` (allowance ${(b.bottom - b.floor).toFixed(2)} mm)` : ''} into the wasteboard.`, m);
+    // A rapid below the floor is never planned (approaches stop at least 0.5 mm above cut material). Inside the stock the
+    // contact test below catches it, but the grid ends at the stock edge: beside the stock it would run into the
+    // spoilboard or a clamp unreported.
+    if (isRapid && m.z < b.floor - 1e-6 && (m.x < b.x0 || m.x > b.x1 || m.y < b.y0 || m.y > b.y1 || prev.x < b.x0 || prev.x > b.x1 || prev.y < b.y0 || prev.y > b.y1)) {
+      this.event('error', 'below-stock', `Rapid at Z ${m.z.toFixed(2)} goes below the floor (${b.floor.toFixed(2)}) outside the stock, into the spoilboard or a clamp.`, m);
+    }
     if (m.z > b.top + t.z) this.event('warning', 'outside-envelope', `Z ${m.z.toFixed(1)} exceeds Z travel.`, m);
     let removed = 0; let rapidHit = false; let engagement = 0; let radial = 0; let wall = 0; let bulk = 0;
     const lxy = Math.hypot(dx, dy); const ux = lxy > 1e-9 ? dx / lxy : 0, uy = lxy > 1e-9 ? dy / lxy : 0;

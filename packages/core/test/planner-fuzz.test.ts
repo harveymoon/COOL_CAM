@@ -65,7 +65,7 @@ describe('planner fuzz (2.5D)', () => {
       expect(post.gcode.length > 0 || tps.every(t => !t.moves.length), `job ${n} (seed ${s0}) post: ${post.warnings.join(' ')}`).toBe(true);
       expect(post.gcode).not.toMatch(/NaN|Infinity|undefined/);
     }
-  });
+  }, Math.max(5000, COUNT * 250)); // ~40 ms a job here; the nightly run does 300
 });
 
 describe('planner fuzz (3D)', () => {

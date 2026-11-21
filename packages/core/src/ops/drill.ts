@@ -13,7 +13,7 @@ export function generateDrill(job: Job, op: DrillOp): Toolpath {
   const centers: { points: Vec2[] }[] = shapes.map(s => {
     return { points: [centroid(s.polyline)] };
   });
-  const finalZ = ctx.stockTop - op.depth;
+  const finalZ = ctx.stockTop - ctx.depth; // clamped at the spoilboard floor
   const peck = op.peck && op.peck > 0 ? op.peck : 0;
   for (const c of orderByNearest(centers, { x: 0, y: 0 })) {
     const p = c.points[0];

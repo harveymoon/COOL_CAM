@@ -13,7 +13,7 @@ export function generateKeyhole(job: Job, op: KeyholeOp): Toolpath {
   const done = (): Toolpath => ({ opId: op.id, opName: op.name ?? 'Keyhole', toolId: tool.id, rpm: ctx.rpm, moves: ml.moves, warnings: ctx.warnings, stepdown: op.depth });
   if (tool.type !== 'keyhole') ctx.warnings.push(`Tool ${tool.name} is not a keyhole cutter; the slot will be cut as a plain slot.`);
   const length = op.length ?? 20; const ang = ((op.angle ?? 90) * Math.PI) / 180;
-  const z = ctx.stockTop - op.depth;
+  const z = ctx.stockTop - ctx.depth; // clamped at the spoilboard floor
   const slots = getShapes(job, op.shapeIds).map(s => {
     const pts = s.polyline.points;
     if (!s.polyline.closed && pts.length >= 2) return { points: [pts[0], pts[pts.length - 1]] };

@@ -110,8 +110,9 @@ export function stockBounds(stock: Stock) {
   return { x0, y0, x1: x0 + stock.width, y1: y0 + stock.length, top, bottom, floor };
 }
 
+/** A tool by its id. Never by T number: an op whose toolId happened to equal another tool's number ("102") resolved to that tool. */
 export function getTool(job: Job, id: string): Tool {
-  const t = job.tools.find(t => t.id === id || String(t.number) === id);
+  const t = job.tools.find(t => t.id === id);
   if (!t) throw new Error(`Unknown tool '${id}'. Available: ${job.tools.map(t => t.id).join(', ')}`);
   return t;
 }

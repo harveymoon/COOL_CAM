@@ -19,6 +19,8 @@ export interface OpContext {
   stockBottom: number;
   /** Stock bottom minus the spoilboard allowance: the lowest Z a planner may cut to. */
   floor: number;
+  /** The op's depth below the stock top, clamped so the cut never goes below `floor`. Use it instead of `op.depth`. */
+  depth: number;
   /** Z levels to cut, from first pass to final (absolute). */
   passes: number[];
   /** Depth per pass actually used for `passes` (mm). */
@@ -26,27 +28,40 @@ export interface OpContext {
   warnings: string[];
 }
 
+/** Passes beyond this are a typo (a pass depth of 0.001 mm), not a plan: refuse rather than hang generation. */
+const MAX_PASSES = 2000;
+
 export function makeContext(job: Job, op: OpBase): OpContext {
   const tool = getTool(job, op.toolId);
+  // a zero or missing diameter makes every offset degenerate and the default pass depth 0 (an endless pass loop)
+  if (!(tool.diameter > 0) || !Number.isFinite(tool.diameter)) throw new Error(`Tool ${tool.name} has no usable diameter (${tool.diameter}); fix it in the tool library.`);
+  if (!Number.isFinite(op.depth)) throw new Error(`Depth ${op.depth} is not a number.`);
   const b = stockBounds(job.stock);
   const rpm = op.rpm ?? tool.rpm ?? 18000;
   const feed = op.feed ?? tool.feed ?? 1000;
   const plunge = op.plunge ?? tool.plunge ?? Math.round(feed * 0.4);
   const start = op.startDepth ?? 0;
+  const warnings: string[] = [];
+  // Planners never cut below the floor (stock bottom minus the spoilboard allowance): a depth past it is clamped there and
+  // reported, rather than left for the simulator to flag after the fact. Through-cuts sized to the floor are unaffected.
+  const maxDepth = b.top - b.floor;
+  const depth = Math.min(op.depth, maxDepth);
+  if (op.depth > maxDepth + 1e-6) {
+    const allowance = Math.max(0, job.stock.spoilboard ?? 0);
+    warnings.push(`Depth ${op.depth} mm is deeper than the stock (${job.stock.thickness} mm)${allowance ? ` plus the ${allowance} mm spoilboard allowance` : ''}; cut to ${+maxDepth.toFixed(3)} mm instead. Raise the spoilboard allowance if the cut really must go deeper.`);
+  }
   // default pass depth: one diameter for endmills / ball noses; a V-bit's nominal diameter is its widest point, so cap it at 2 mm
   const dpp = op.depthPerPass && op.depthPerPass > 0 ? op.depthPerPass : tool.type === 'vbit' ? Math.min(2, tool.diameter) : tool.diameter;
-  const total = op.depth - start;
+  const total = depth - start;
   const passes: number[] = [];
-  const warnings: string[] = [];
   if (total <= 0) warnings.push(`Depth (${op.depth}) must exceed start depth (${start}); nothing to cut.`);
   else {
     const n = Math.ceil(total / dpp - 1e-9);
-    for (let i = 1; i <= n; i++) passes.push(b.top - Math.min(op.depth, start + i * dpp));
+    if (n > MAX_PASSES) throw new Error(`${n} passes of ${dpp} mm to reach ${depth} mm; check the depth per pass.`);
+    for (let i = 1; i <= n; i++) passes.push(b.top - Math.min(depth, start + i * dpp));
   }
-  if (tool.fluteLength && op.depth > tool.fluteLength) warnings.push(`Depth ${op.depth} mm exceeds flute length ${tool.fluteLength} mm of ${tool.name}.`);
-  const allowance = Math.max(0, job.stock.spoilboard ?? 0);
-  if (op.depth > job.stock.thickness + allowance + 1e-6) warnings.push(`Depth ${op.depth} mm is deeper than the stock (${job.stock.thickness} mm)${allowance ? ` plus the ${allowance} mm spoilboard allowance` : ''}. The cutter will hit the wasteboard.`);
-  return { job, tool, rpm, feed, plunge, safeZ: b.top + job.safeZ, clearanceZ: b.top + job.clearanceZ, stockTop: b.top, stockBottom: b.bottom, floor: b.floor, passes, stepdown: Math.min(dpp, Math.max(total, 0) || dpp), warnings };
+  if (tool.fluteLength && depth > tool.fluteLength) warnings.push(`Depth ${depth} mm exceeds flute length ${tool.fluteLength} mm of ${tool.name}.`);
+  return { job, tool, rpm, feed, plunge, safeZ: b.top + job.safeZ, clearanceZ: b.top + job.clearanceZ, stockTop: b.top, stockBottom: b.bottom, floor: b.floor, depth, passes, stepdown: Math.min(dpp, Math.max(total, 0) || dpp), warnings };
 }
 
 export class MoveList {

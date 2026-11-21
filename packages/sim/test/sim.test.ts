@@ -20,8 +20,10 @@ describe('stock sim', () => {
     j.shapes.push({ id: 'r', polyline: rect(10, 10, 40, 40) });
     j.ops.push({ id: 'pr', type: 'profile', toolId: 't201', shapeIds: ['r'], side: 'outside', depth: 11 } as ProfileOp);
     const tps = generateToolpaths(j);
+    // hand-built: the planners clamp at the spoilboard floor now, so the below-stock cut has to be written out
     const bad: Toolpath = { opId: 'x', opName: 'bad', toolId: 't201', rpm: 18000, warnings: [], moves: [
       { kind: 'rapid', x: 0, y: 30, z: -1 }, { kind: 'rapid', x: 60, y: 30, z: -1 },
+      { kind: 'rapid', x: 5, y: 5, z: 2 }, { kind: 'plunge', x: 5, y: 5, z: -11, f: 300 }, { kind: 'retract', x: 5, y: 5, z: 2 },
     ] };
     const s = simulate(j, [bad, ...tps], { resolution: 0.5 });
     expect(s.events.some(e => e.code === 'rapid-into-stock')).toBe(true);

@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
+import path from 'node:path';
+import { defaultFontDirs } from '../src/node-paths.js';
 import { newJob, rect, circleShape, generateToolpaths, getTool, loadFont, textToPolylines, heightmapToMesh, meshBBox, bbox, signedArea, polygon } from '../src/index.js';
 import type { VCarveOp, KeyholeOp, ProfileOp, PocketOp, Tool } from '../src/index.js';
 import { postGrbl } from '../../post/src/index.js';
 import { StockSim } from '../../sim/src/index.js';
 
-const ARIAL = '/System/Library/Fonts/Supplemental/Arial.ttf';
+// Arial from the platform font folders (macOS Supplemental, Windows Fonts); Linux CI usually has none and skips
+const ARIAL = defaultFontDirs().flatMap(d => { try { return fs.readdirSync(d).filter(f => /^arial\.ttf$/i.test(f)).map(f => path.join(d, f)); } catch { return []; } })[0] ?? '';
 
 describe('v-carve', () => {
   it('cuts deeper where the region is wider, with walls on the outline', () => {
@@ -89,7 +92,7 @@ describe('rest machining', () => {
 });
 
 describe('text and heightmap', () => {
-  it.skipIf(!fs.existsSync(ARIAL))('outlines text with holes', () => {
+  it.skipIf(!ARIAL)('outlines text with holes', () => {
     const font = loadFont('arial', fs.readFileSync(ARIAL).buffer.slice(0));
     const loops = textToPolylines(font, { text: 'Bo', size: 20, x: 10, y: 10, align: 'left' });
     expect(loops.length).toBe(5); // B outer + 2 holes, o outer + 1 hole

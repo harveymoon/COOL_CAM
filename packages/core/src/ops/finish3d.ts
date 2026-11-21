@@ -34,7 +34,7 @@ export function generateFinish3D(job: Job, op: Finish3DOp): Toolpath {
     else { const i = domain.i0 + k; for (let j = domain.j0; j <= domain.j1; j++) cells.push({ i, j }); }
     if (!forward) cells.reverse();
     // split into cutting spans (surface below the stock top); short air gaps are bridged at the surface height
-    let span: { i: number; j: number }[] = []; let airRun = 0;
+    let span: { i: number; j: number }[] = [];
     const flush = () => {
       if (span.length < 2) { span = []; return; }
       const p0 = world(span[0].i, span[0].j); const z0 = zAt(span[0].i, span[0].j);
@@ -59,10 +59,23 @@ export function generateFinish3D(job: Job, op: Finish3DOp): Toolpath {
       }
       span = [];
     };
+    // Cells skipped as air are cut through at `top` only where nothing there needs the cutter higher: the floor, cells
+    // outside the boundary (only uncut stock, never above the stock top), or a surface at or below `top`. With a Z window
+    // (startDepth) an "air" cell can be model *above* the window: running it at `top` would cut into that surface, so the
+    // span ends at the last real cell instead and the next one starts after the gap.
+    const freeAtTop = (c: { i: number; j: number }) => isFloor(c.i, c.j) || Math.min(off.z[c.j * off.w + c.i], ctx.stockTop) <= top + 1e-6;
+    let gap: { i: number; j: number }[] = [];
     for (const c of cells) {
-      if (zAt(c.i, c.j) < air) { if (airRun > 0 && airRun <= 2 && span.length) { /* bridged */ } airRun = 0; span.push(c); }
-      else { airRun++; if (airRun === 1 && span.length) span.push(c); if (airRun > 2) flush(); }
+      if (zAt(c.i, c.j) < air) {
+        if (gap.length) {
+          if (span.length && gap.length <= 2 && gap.every(freeAtTop)) span.push(...gap); // bridge a short air gap at `top`
+          else { if (span.length && freeAtTop(gap[0])) span.push(gap[0]); flush(); }    // lift off over the first air cell, if it is free
+          gap = [];
+        }
+        span.push(c);
+      } else gap.push(c);
     }
+    if (gap.length && span.length && freeAtTop(gap[0])) span.push(gap[0]);
     flush();
     forward = !forward;
   }

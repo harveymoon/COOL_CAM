@@ -128,6 +128,7 @@ export function offsetSurface(hm: Heightmap, tool: Tool, stockToLeave = 0, radia
   const dx: number[] = [], dy: number[] = [], dz: number[] = [];
   for (let j = -rc; j <= rc; j++) for (let i = -rc; i <= rc; i++) { const d = Math.hypot(i * hm.res, j * hm.res); if (d <= r) { dx.push(i); dy.push(j); dz.push(toolProfile(tool, d, r)); } }
   const out = new Float32Array(hm.w * hm.h); const { w, h, z } = hm; const n = dx.length;
+  if (dz.every(v => v === 0)) { flatMaxFilter(hm, dx, dy, rc, out, stockToLeave); return { ...hm, z: out, floor: hm.floor + stockToLeave }; }
   for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
     let best = hm.floor;
     for (let k = 0; k < n; k++) {
@@ -138,6 +139,46 @@ export function offsetSurface(hm: Heightmap, tool: Tool, stockToLeave = 0, radia
     out[j * w + i] = best + stockToLeave;
   }
   return { ...hm, z: out, floor: hm.floor + stockToLeave };
+}
+
+/**
+ * Flat-bottomed cutter: the offset is the plain maximum of the heightmap over the disc, which splits into one 1D sliding
+ * maximum per disc row (van Herk / Gil-Werman, O(1) per cell per row): about 2·rc samples per cell instead of π·rc².
+ * The disc rows are taken from the brute-force kernel itself, so the result is identical. Outside the grid is the floor.
+ */
+function flatMaxFilter(hm: Heightmap, dx: number[], dy: number[], rc: number, out: Float32Array, stockToLeave: number) {
+  const { w, h, z, floor } = hm;
+  const half = new Int32Array(2 * rc + 1).fill(-1); // half-width of the disc in row dy (index dy + rc)
+  for (let k = 0; k < dx.length; k++) half[dy[k] + rc] = Math.max(half[dy[k] + rc], Math.abs(dx[k]));
+  out.fill(floor);
+  // disc rows grouped by half-width: rows +d and -d (and neighbours near the centre) share one sliding max per input row
+  const byWidth = new Map<number, number[]>();
+  for (let d = -rc; d <= rc; d++) { const a = half[d + rc]; if (a >= 0) { const l = byWidth.get(a) ?? []; l.push(d); byWidth.set(a, l); } }
+  const row = new Float32Array(w), pre = new Float32Array(w), suf = new Float32Array(w), slid = new Float32Array(w);
+  // sliding max of `row` over [i - a, i + a] using blocks of length 2a + 1; cells past the ends count as the floor
+  const slide = (a: number) => {
+    const L = 2 * a + 1;
+    for (let i = 0; i < w; i++) pre[i] = i % L === 0 ? row[i] : Math.max(pre[i - 1], row[i]);
+    for (let i = w - 1; i >= 0; i--) suf[i] = (i % L === L - 1 || i === w - 1) ? row[i] : Math.max(suf[i + 1], row[i]);
+    for (let i = 0; i < w; i++) {
+      const lo = Math.max(0, i - a), hi = Math.min(w - 1, i + a);
+      // [lo, hi] is at most L long, so it spans one block or the tail of one and the head of the next
+      // within one block: either lo starts it (prefix up to hi) or hi was clipped to the row end (suffix from lo)
+      const m = Math.floor(lo / L) === Math.floor(hi / L) ? (lo % L === 0 ? pre[hi] : suf[lo]) : Math.max(suf[lo], pre[hi]);
+      slid[i] = (i - a < 0 || i + a >= w) ? Math.max(m, floor) : m;
+    }
+  };
+  for (const [a, ds] of byWidth) {
+    for (let jj = 0; jj < h; jj++) {
+      let used = false; for (const d of ds) { const j = jj - d; if (j >= 0 && j < h) { used = true; break; } }
+      if (!used) continue;
+      for (let i = 0; i < w; i++) row[i] = z[jj * w + i];
+      slide(a);
+      for (const d of ds) { const j = jj - d; if (j < 0 || j >= h) continue; const o = j * w; for (let i = 0; i < w; i++) if (slid[i] > out[o + i]) out[o + i] = slid[i]; } // output row j reads input row j + d
+    }
+  }
+  // rows of the disc that fall outside the grid see only the floor, which `out` already starts from
+  if (stockToLeave) for (let k = 0; k < out.length; k++) out[k] += stockToLeave;
 }
 
 /** Bilinear sample of a heightmap at world XY (clamped). */

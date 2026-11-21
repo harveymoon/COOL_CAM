@@ -21,6 +21,8 @@ export interface Surface {
 }
 
 const cache = new Map<string, Surface>();
+/** Largest heightmap a 3D op may build (cells). */
+export const MAX_SURFACE_CELLS = 12_000_000;
 
 export function surfaceFor(job: Job, op: Rough3DOp | Finish3DOp, tool: Tool, res: number): Surface {
   const model = getModel(job, op.modelId);
@@ -39,6 +41,10 @@ export function surfaceFor(job: Job, op: Rough3DOp | Finish3DOp, tool: Tool, res
   const x0 = Math.max(sb.x0 - r, ab.minX - r - res), y0 = Math.max(sb.y0 - r, ab.minY - r - res);
   const x1 = Math.min(sb.x1 + r, ab.maxX + r + res), y1 = Math.min(sb.y1 + r, ab.maxY + r + res);
   const floor = bb.min[2];
+  // Each cell costs ~13 bytes across the heightmap, offset, masked copy and mask, and 25 surfaces are cached: a 0.05 mm
+  // resolution over a full sheet would ask for gigabytes. Refuse with the numbers rather than stall the worker.
+  const cells = Math.ceil((x1 - x0) / res + 1) * Math.ceil((y1 - y0) / res + 1);
+  if (cells > MAX_SURFACE_CELLS) throw new Error(`The 3D surface would need ${(cells / 1e6).toFixed(1)} M cells at ${res} mm (limit ${MAX_SURFACE_CELLS / 1e6} M): use a coarser resolution (about ${(res * Math.sqrt(cells / MAX_SURFACE_CELLS)).toFixed(2)} mm) or a tighter machining boundary.`);
   const hm = meshHeightmap(mesh, res, { x0, y0, x1: Math.max(x1, x0 + res), y1: Math.max(y1, y0 + res) }, floor);
   // half a diagonal cell of extra radius keeps linear interpolation between samples conservative at vertical walls
   const off = offsetSurface(hm, tool, stl, res * 0.71);
